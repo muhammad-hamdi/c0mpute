@@ -2,6 +2,9 @@
 resolver = "3"
 members = [
     # ── Host (c0mpute umbrella binary + supporting crates) ─────────────
+    # The host binary AND any in-process workload code lives here.
+    # The `plugins/` directory holds only marketplace wrappers
+    # (module.toml + web stubs); plugin source lives in upstream repos.
     "node/crates/quest-cli",          # produces `c0mpute`
     "node/crates/quest-core",
     "node/crates/quest-net",
@@ -12,11 +15,7 @@ members = [
     "node/crates/quest-doctor",
     "node/crates/quest-proto",
     "node/crates/quest-api",
-
-    # ── Plugins (per dips/0006-module-model.md) ────────────────────────
-    "plugins/transcode/lib",          # in-process FFmpeg workload
-    "plugins/coinpay/cli",            # produces `coinpay`
-    "plugins/infernet/cli",           # produces `infernet`
+    "node/crates/quest-transcode",    # in-process transcode workload (FFmpeg)
 ]
 
 [workspace.package]
@@ -61,8 +60,7 @@ quest-doctor = { path = "node/crates/quest-doctor" }
 quest-api = { path = "node/crates/quest-api" }
 quest-core = { path = "node/crates/quest-core" }
 
-# Plugin crates
-quest-transcode = { path = "plugins/transcode/lib" }
+quest-transcode = { path = "node/crates/quest-transcode" }
 
 [profile.release]
 lto = "thin"

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -7,6 +8,13 @@ const nextConfig: NextConfig = {
   // /transcode, /coinpay, /infernet once we build them; for v1 the CLI is
   // the entire UX.
   trailingSlash: false,
+
+  // Bun monorepo: Turbopack can't infer the workspace root reliably, so
+  // pin it to the repo root explicitly. Without this, Next 16 errors with
+  // "We couldn't find the Next.js package" during build on Railway.
+  turbopack: {
+    root: path.resolve(__dirname, "..", ".."),
+  },
 
   // 301 www.c0mpute.com → c0mpute.com (any path). Keeps the canonical
   // hostname clean; lets us configure TLS / DNS once at the apex without
