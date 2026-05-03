@@ -1,4 +1,8 @@
 # c0mpute plugin manifest. See dips/0006-module-model.md.
+#
+# transcode is the only first-party in-tree plugin: its workload code is
+# compiled INTO the c0mpute binary itself (mode = "in-process"). The
+# implementation lives at node/crates/quest-transcode in this repo.
 
 [module]
 id          = "transcode"
@@ -7,8 +11,8 @@ version     = "0.1.0"
 kind        = "workload"
 description = "Decentralized audio/video transcoding via FFmpeg with hardware acceleration (NVENC, QSV, AMF, VideoToolbox, AV1)."
 author      = "Profullstack"
-license     = "Apache-2.0"
-homepage    = "https://c0mpute.com/transcode"
+license     = "Apache-2.0 OR MIT"
+homepage    = "https://c0mpute.com"
 keywords    = ["ffmpeg", "transcode", "video", "audio", "hls", "av1"]
 
 [module.requirements]
@@ -22,12 +26,12 @@ capabilities = ["ffmpeg", "gpu:nvidia?", "gpu:intel?", "gpu:amd?"]
 
 [module.dispatch]
 mode = "in-process"
-# In-process modules are compiled into the c0mpute binary itself. The
-# Rust crate at ./lib provides the transcode handler trait impl.
+# The handler is compiled into the c0mpute binary. No separate install
+# step needed — installing c0mpute installs transcode automatically.
 
 [module.surfaces]
 cli = "c0mpute transcode"
-web = "c0mpute.com/transcode"
+# web = "c0mpute.com/transcode"   # planned
 
 [module.config.defaults]
 preset = "video-1080p"

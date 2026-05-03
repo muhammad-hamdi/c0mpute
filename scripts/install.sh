@@ -1,23 +1,28 @@
 #!/usr/bin/env sh
 # c0mpute.com installer. Served at https://c0mpute.com/install.sh.
-# Installs the v1 CLI stack: c0mpute, coinpay, infernet.
+#
+# Installs the c0mpute v1 CLI stack:
+#   c0mpute   — this repo (https://github.com/profullstack/c0mpute)
+#   coinpay   — chained from https://coinpay.com/install.sh
+#   infernet  — chained from https://infernetprotocol.com/install.sh
+#
 # Idempotent — re-running upgrades in place.
 #
-# Usage:
-#   curl -fsSL https://c0mpute.com/install.sh | sh
-#
-# Flags (per c0mpute v1 PRD §"Installer Modes"):
-#   --minimal       Install only c0mpute
+# Flags:
+#   --minimal       Install only c0mpute (skip coinpay + infernet)
 #   --no-coinpay    Skip CoinPay CLI
 #   --no-infernet   Skip Infernet CLI
-#   --worker        Add worker-readiness checks (Docker, FFmpeg)
-#   --developer     Verbose diagnostics + dev tools
-#   --force         Reinstall even if already present
+#   --worker        Add Docker / FFmpeg readiness checks
+#   --developer     Verbose diagnostics
+#   --force         Reinstall over existing
 set -eu
 
 C0MPUTE_VERSION="${C0MPUTE_VERSION:-latest}"
 C0MPUTE_HOME="${C0MPUTE_HOME:-$HOME/.c0mpute}"
 RELEASE_BASE="${C0MPUTE_RELEASE_BASE:-https://c0mpute.com/releases}"
+
+COINPAY_INSTALL_URL="${COINPAY_INSTALL_URL:-https://coinpay.com/install.sh}"
+INFERNET_INSTALL_URL="${INFERNET_INSTALL_URL:-https://infernetprotocol.com/install.sh}"
 
 INSTALL_C0MPUTE=1
 INSTALL_COINPAY=1
@@ -26,18 +31,10 @@ WORKER_MODE=0
 DEVELOPER_MODE=0
 FORCE=0
 
-# ────────────────────────────────────────────────────────────────────────
-# tiny stdout helpers
-# ────────────────────────────────────────────────────────────────────────
-
 say()  { printf '\033[1;36m→\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
-
-# ────────────────────────────────────────────────────────────────────────
-# arg parsing
-# ────────────────────────────────────────────────────────────────────────
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -57,10 +54,6 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-
-# ────────────────────────────────────────────────────────────────────────
-# platform detection
-# ────────────────────────────────────────────────────────────────────────
 
 detect_platform() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -82,49 +75,64 @@ require() {
 }
 
 # ────────────────────────────────────────────────────────────────────────
-# install one CLI tarball
+# c0mpute itself
 # ────────────────────────────────────────────────────────────────────────
 
-install_one() {
-  bin="$1"           # binary name (c0mpute / coinpay / infernet)
-  platform="$2"
-
-  target="$C0MPUTE_HOME/bin/$bin"
+install_c0mpute() {
+  platform="$1"
+  target="$C0MPUTE_HOME/bin/c0mpute"
   if [ -x "$target" ] && [ "$FORCE" -eq 0 ]; then
-    say "$bin already installed at $target (use --force to reinstall)"
+    say "c0mpute already installed at $target (use --force to reinstall)"
     return 0
   fi
 
-  artifact="${bin}-${platform}.tar.gz"
+  artifact="c0mpute-${platform}.tar.gz"
   url="${RELEASE_BASE}/${C0MPUTE_VERSION}/${artifact}"
   sig_url="${url}.minisig"
   tmp=$(mktemp -d)
 
-  say "downloading $bin ${C0MPUTE_VERSION}"
-  if ! curl -fsSL "$url" -o "$tmp/$artifact"; then
-    rm -rf "$tmp"
-    die "could not download $url"
-  fi
+  say "downloading c0mpute ${C0MPUTE_VERSION}"
+  curl -fsSL "$url" -o "$tmp/$artifact" || { rm -rf "$tmp"; die "could not download $url"; }
   curl -fsSL "$sig_url" -o "$tmp/$artifact.minisig" 2>/dev/null \
-    || warn "no signature published for $bin yet; continuing"
+    || warn "no signature published for c0mpute yet; continuing"
 
   if command -v minisign >/dev/null 2>&1 && [ -f "$tmp/$artifact.minisig" ]; then
-    say "verifying signature for $bin"
+    say "verifying signature for c0mpute"
     C0MPUTE_PUBKEY="${C0MPUTE_PUBKEY:-RWQ_REPLACE_ME_WITH_PROD_MINISIGN_PUBKEY}"
     if ! minisign -V -P "$C0MPUTE_PUBKEY" -m "$tmp/$artifact" -x "$tmp/$artifact.minisig" >/dev/null 2>&1; then
       rm -rf "$tmp"
-      die "signature verification failed for $bin"
+      die "signature verification failed for c0mpute"
     fi
   fi
 
   tar -xzf "$tmp/$artifact" -C "$C0MPUTE_HOME/bin"
-  chmod +x "$C0MPUTE_HOME/bin/$bin"
+  chmod +x "$C0MPUTE_HOME/bin/c0mpute"
   rm -rf "$tmp"
-  ok "installed $bin → $C0MPUTE_HOME/bin/$bin"
+  ok "installed c0mpute → $C0MPUTE_HOME/bin/c0mpute"
 }
 
 # ────────────────────────────────────────────────────────────────────────
-# shell rc updates
+# Chain to upstream installers for coinpay + infernet
+# ────────────────────────────────────────────────────────────────────────
+
+chain_install() {
+  name="$1"
+  url="$2"
+
+  if command -v "$name" >/dev/null 2>&1 && [ "$FORCE" -eq 0 ]; then
+    say "$name already on PATH at $(command -v "$name") (use --force to reinstall)"
+    return 0
+  fi
+
+  say "installing $name (via $url)"
+  if ! curl -fsSL "$url" | sh; then
+    warn "$name install failed (continuing without it)"
+    return 1
+  fi
+}
+
+# ────────────────────────────────────────────────────────────────────────
+# PATH + diagnostics
 # ────────────────────────────────────────────────────────────────────────
 
 ensure_path() {
@@ -136,20 +144,16 @@ ensure_path() {
   done
 }
 
-# ────────────────────────────────────────────────────────────────────────
-# post-install verification + diagnostics
-# ────────────────────────────────────────────────────────────────────────
-
 print_versions() {
   echo
-  if [ "$INSTALL_C0MPUTE" -eq 1 ] && [ -x "$C0MPUTE_HOME/bin/c0mpute" ]; then
+  if [ -x "$C0MPUTE_HOME/bin/c0mpute" ]; then
     printf 'c0mpute installed:  %s\n'  "$("$C0MPUTE_HOME/bin/c0mpute" version 2>/dev/null | tail -1)"
   fi
-  if [ "$INSTALL_COINPAY" -eq 1 ] && [ -x "$C0MPUTE_HOME/bin/coinpay" ]; then
-    printf 'coinpay installed:  %s\n'  "$("$C0MPUTE_HOME/bin/coinpay" version 2>/dev/null | tail -1)"
+  if command -v coinpay >/dev/null 2>&1; then
+    printf 'coinpay installed:  %s\n'  "$(coinpay --version 2>/dev/null || coinpay version 2>/dev/null | tail -1)"
   fi
-  if [ "$INSTALL_INFERNET" -eq 1 ] && [ -x "$C0MPUTE_HOME/bin/infernet" ]; then
-    printf 'infernet installed: %s\n'  "$("$C0MPUTE_HOME/bin/infernet" version 2>/dev/null | tail -1)"
+  if command -v infernet >/dev/null 2>&1; then
+    printf 'infernet installed: %s\n'  "$(infernet --version 2>/dev/null || infernet version 2>/dev/null | tail -1)"
   fi
 }
 
@@ -178,9 +182,9 @@ main() {
   platform=$(detect_platform)
   mkdir -p "$C0MPUTE_HOME/bin"
 
-  if [ "$INSTALL_C0MPUTE" -eq 1 ]; then install_one c0mpute  "$platform"; fi
-  if [ "$INSTALL_COINPAY" -eq 1 ]; then install_one coinpay  "$platform"; fi
-  if [ "$INSTALL_INFERNET" -eq 1 ]; then install_one infernet "$platform"; fi
+  if [ "$INSTALL_C0MPUTE" -eq 1 ]; then install_c0mpute "$platform"; fi
+  if [ "$INSTALL_COINPAY" -eq 1 ];  then chain_install coinpay  "$COINPAY_INSTALL_URL"; fi
+  if [ "$INSTALL_INFERNET" -eq 1 ]; then chain_install infernet "$INFERNET_INSTALL_URL"; fi
 
   ensure_path
 
@@ -192,7 +196,7 @@ main() {
   cat <<EOF
 
 Next steps:
-  coinpay did create
+  c0mpute coinpay did create
   c0mpute worker register
   c0mpute doctor
   c0mpute worker start
@@ -209,6 +213,8 @@ EOF
     echo "  C0MPUTE_HOME=$C0MPUTE_HOME"
     echo "  C0MPUTE_VERSION=$C0MPUTE_VERSION"
     echo "  RELEASE_BASE=$RELEASE_BASE"
+    echo "  COINPAY_INSTALL_URL=$COINPAY_INSTALL_URL"
+    echo "  INFERNET_INSTALL_URL=$INFERNET_INSTALL_URL"
     echo "  PLATFORM=$platform"
   fi
 }

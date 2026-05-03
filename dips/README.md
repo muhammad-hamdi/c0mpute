@@ -93,3 +93,5 @@ superseded-by: <DIP-NNNN if this gets replaced>
 | 0007 | CoinPay DID is the canonical identity, payment, reputation layer | Accepted   |
 | 0008 | UI strategy: CLI-first, simple web, react-blessed TUI, Perry later | Accepted |
 | 0009 | Mojo for GPU/kernel-shaped compute (when applicable)             | Accepted   |
+| 0010 | Operator-run seed nodes for libp2p Kad-DHT bootstrap             | Accepted   |
+| 0011 | No central backend; libp2p + CoinPay are source of truth         | Accepted   |

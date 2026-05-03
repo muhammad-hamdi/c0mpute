@@ -98,16 +98,22 @@ The plugin form mirrors the URL namespace: `c0mpute.com/transcode`,
 │   └── infernet/{module.toml,web/}    # source lives upstream at infernet-protocol
 ├── apps/
 │   ├── web/                           # @c0mpute/web — Next.js apex landing
-│   ├── coordinator/                   # @c0mpute/coordinator — Hono API (under review)
 │   └── tui/                           # @c0mpute/tui — react-blessed TUI
 ├── packages/
 │   └── shared/                        # @c0mpute/shared — shared TS types
-├── supabase/migrations/               # data model reference (under review)
 ├── .mise.toml                         # contributor toolchain pins
+├── railpack.json                      # Railway build config (provider hint)
 └── scripts/
     ├── install.sh                     # served at c0mpute.com/install.sh
     └── dev-setup.sh                   # contributor bootstrap
 ```
+
+There is **no central backend** — no Supabase, no coordinator daemon.
+Discovery, dispatch, and verification flow through libp2p Kad-DHT +
+gossipsub. Identity, payments, escrow, and reputation flow through
+CoinPay DID. The only public infrastructure we host is static
+(landing site, release tarballs, bootstrap seed list, plugin manifest
+mirrors). See [DIP-0011](dips/0011-no-central-backend.md).
 
 `plugins/` directory is for **marketplace metadata only**. Each plugin's
 `module.toml` describes how `c0mpute` discovers, dispatches to, and (in
@@ -132,12 +138,14 @@ cargo build --bin c0mpute
 **Working today**
 
 - `c0mpute` Rust binary builds; clap surface for `doctor`, `worker`,
-  `job`, `modules`, `transcode`, `coinpay` (passthrough), `infernet`
+  `job`, `plugin`, `transcode`, `coinpay` (passthrough), `infernet`
   (passthrough), `tui`, `version`
+- `c0mpute plugin install <url>` chain-calls upstream installers
 - `c0mpute doctor` cross-checks `coinpay` and `infernet` on PATH
-- Apex landing at `apps/web` deployed via Railway, dark CLI-aesthetic
-  with `/`, `/getting-started`, `/docs`, `/contact`, `/terms`, `/privacy`
-- `www.c0mpute.com` → apex 308 redirect via `next.config.ts`
+- Apex landing at [c0mpute.com](https://c0mpute.com) deployed via
+  Railway, dark CLI-aesthetic with `/`, `/getting-started`, `/docs`,
+  `/contact`, `/terms`, `/privacy`
+- `www.c0mpute.com` → apex 308 redirect via `next.config.mjs`
 - `apps/tui` scaffold renders a placeholder dashboard
 - 12 Rust unit tests pass
 
@@ -146,9 +154,9 @@ cargo build --bin c0mpute
 - Real CoinPay DID generation, escrow, receipts (DIP-0007 — depends on
   upstream coinpay project shipping)
 - Real Infernet runtime integration (depends on upstream infernet-protocol)
-- libp2p networking (`quest-net` is a trait surface today)
-- Module marketplace UI on the dashboard
-- Whether to keep `apps/coordinator` + Supabase, or go fully p2p (under review)
+- libp2p networking (`quest-net` is a trait surface today; bootstrap
+  design in DIP-0010)
+- Plugin marketplace UI on the dashboard (`/plugins` page coming)
 
 ## License
 

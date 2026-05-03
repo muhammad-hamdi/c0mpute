@@ -1,4 +1,8 @@
 # c0mpute plugin manifest. See dips/0006-module-model.md.
+#
+# Source code lives in the upstream coinpay project, NOT this repo. This
+# directory is a marketplace wrapper only — the manifest, optional web
+# stub, and metadata that lets `c0mpute plugin install coinpay` resolve.
 
 [module]
 id          = "coinpay"
@@ -7,8 +11,8 @@ version     = "0.1.0"
 kind        = "service"
 description = "Decentralized identifiers, wallet linking, escrow, signed receipts, and worker reputation. The trust spine of the c0mpute network."
 author      = "Profullstack"
-license     = "Apache-2.0"
-homepage    = "https://c0mpute.com/coinpay"
+license     = "Apache-2.0 OR MIT"
+homepage    = "https://coinpay.com"
 keywords    = ["did", "identity", "escrow", "payments", "reputation"]
 
 [module.requirements]
@@ -20,9 +24,15 @@ capabilities = []
 [module.dispatch]
 mode   = "subprocess"
 binary = "coinpay"
-# Standalone CLI on PATH. The c0mpute umbrella forwards `c0mpute coinpay
-# <args>` straight through. See plugins/coinpay/cli for the source.
+# Standalone CLI on PATH. The c0mpute umbrella forwards
+# `c0mpute coinpay <args>` straight through.
+
+[module.install]
+# `c0mpute plugin install coinpay` chains to this URL.
+# `curl -fsSL https://c0mpute.com/install.sh | sh` also chains here when
+# --no-coinpay is not passed.
+url = "https://coinpay.com/install.sh"
 
 [module.surfaces]
 cli = "coinpay"
-# web = "c0mpute.com/coinpay"  # planned, see roadmap
+# web = "c0mpute.com/coinpay"   # planned (separate Next.js app)
