@@ -1,6 +1,6 @@
 //! Core node coordination.
 //!
-//! Loads `~/.quest/config.toml`, decides which roles to run based on flags +
+//! Loads `~/.config/depin/config.toml`, decides which roles to run based on flags +
 //! config + detected hardware, and supervises the long-lived tasks for each
 //! role. Today only the `Config` struct and a rudimentary `Supervisor` shell
 //! are implemented; M0 fills in the role bodies.

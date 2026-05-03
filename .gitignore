@@ -9,3 +9,10 @@ build
 out
 *.tsbuildinfo
 .DS_Store
+
+# Rust
+target/
+
+# Editors
+.idea/
+.vscode/

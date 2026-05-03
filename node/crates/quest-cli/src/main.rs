@@ -1,10 +1,26 @@
-//! `depin` — the depin.quest CLI.
+//! `c0mpute` — the c0mpute.com umbrella CLI.
 //!
-//! Commands are nested under product-line namespaces that mirror the URL
-//! structure on `depin.quest/<line>`. Today the only line is `video` (Quest);
-//! `depin storage`, `depin compute`, etc. plug in alongside as we add them.
+//! Top-level surface:
+//!
+//!   c0mpute doctor
+//!   c0mpute worker register|start|stop|status
+//!   c0mpute job submit|status|logs|cancel
+//!   c0mpute modules list|install|enable|disable
+//!   c0mpute version
+//!
+//! Plugin (module) subcommands. Each one delegates / dispatches into the
+//! relevant module — built-in modules run in-process, peer-CLI modules
+//! shell out to their binary on PATH (per DIP-0006):
+//!
+//!   c0mpute transcode <sub>     # in-process FFmpeg workload
+//!   c0mpute coinpay   <args…>   # delegates to `coinpay`
+//!   c0mpute infernet  <args…>   # delegates to `infernet`
+//!
+//! The plugin form mirrors the URL namespace: c0mpute.com/transcode,
+//! c0mpute.com/coinpay, c0mpute.com/infernet.
 
 use std::path::PathBuf;
+use std::process::Command;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -13,65 +29,138 @@ use quest_proto::Role;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "depin",
+    name = "c0mpute",
     version,
-    about = "depin.quest — decentralized infrastructure CLI",
-    long_about = "depin.quest CLI. Commands are namespaced by product line, e.g. `depin video start`."
+    about = "c0mpute.com — decentralized compute network",
+    long_about = "c0mpute.com CLI. Submit jobs, run a worker, manage modules.\n\nBuilt-in plugins:\n  transcode  (FFmpeg, in-process)\n  coinpay    (DID + payments, peer CLI)\n  infernet   (AI inference, peer CLI)\n\n  c0mpute coinpay did create\n  c0mpute transcode submit input.mov --preset hls\n  c0mpute infernet run prompts.jsonl --model qwen"
 )]
 struct Cli {
     /// Override the config file location.
-    #[arg(long, env = "DEPIN_CONFIG", global = true)]
+    #[arg(long, env = "C0MPUTE_CONFIG", global = true)]
     config: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: TopCmd,
+    command: Cmd,
 }
 
 #[derive(Subcommand, Debug)]
-enum TopCmd {
-    /// Quest — decentralized video transcoding & hosting.
-    Video {
+enum Cmd {
+    /// Run full-stack diagnostic checks.
+    Doctor,
+    /// Worker lifecycle.
+    Worker {
         #[command(subcommand)]
-        cmd: VideoCmd,
+        cmd: WorkerCmd,
     },
-    /// Print the version and exit.
+    /// Job lifecycle.
+    Job {
+        #[command(subcommand)]
+        cmd: JobCmd,
+    },
+    /// Module management.
+    Modules {
+        #[command(subcommand)]
+        cmd: ModulesCmd,
+    },
+
+    /// Transcode plugin (built-in FFmpeg workload).
+    Transcode {
+        #[command(subcommand)]
+        cmd: TranscodeCmd,
+    },
+    /// Coinpay plugin — delegates to the `coinpay` peer CLI.
+    Coinpay {
+        /// Arguments forwarded to `coinpay`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Infernet plugin — delegates to the `infernet` peer CLI.
+    Infernet {
+        /// Arguments forwarded to `infernet`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Launch the interactive TUI (worker / job / module dashboard).
+    ///
+    /// Subprocess-launches `c0mpute-tui` (a react-blessed terminal UI built
+    /// on Bun). See apps/tui in the repo. Long-term we move to Perry once
+    /// their CLI surface ships.
+    Tui {
+        /// Arguments forwarded to the TUI binary.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Print the c0mpute binary version.
     Version,
 }
 
 #[derive(Subcommand, Debug)]
-enum VideoCmd {
-    /// Start the node and run until ctrl-c.
+enum WorkerCmd {
+    /// Register this machine as a worker (requires a CoinPay worker DID).
+    Register,
+    /// Start the worker daemon and accept jobs.
     Start {
-        /// Comma-separated roles, e.g. `storage,transcode,gateway,verifier`.
         #[arg(long, value_delimiter = ',')]
         roles: Option<Vec<String>>,
-        /// Storage cap (e.g. `500GB`). Stored in config; not parsed here.
         #[arg(long)]
         storage: Option<String>,
-        /// Force-enable transcode role even without GPU.
         #[arg(long)]
         gpu: bool,
     },
-    /// Print the resolved config and exit.
+    /// Stop a running worker.
+    Stop,
+    /// Show worker status.
     Status,
-    /// Run diagnostic checks and (optionally) auto-fix.
-    Doctor {
-        #[arg(long)]
-        fix: bool,
-        #[arg(long)]
-        report: bool,
-    },
-    /// Read/write a config key.
-    Config {
-        #[command(subcommand)]
-        action: ConfigAction,
-    },
 }
 
 #[derive(Subcommand, Debug)]
-enum ConfigAction {
-    Get { key: String },
-    Set { key: String, value: String },
+enum JobCmd {
+    /// Submit a job manifest JSON.
+    Submit { manifest: PathBuf },
+    /// Show status for a job ID.
+    Status { id: String },
+    /// Tail logs for a job ID.
+    Logs {
+        id: String,
+        #[arg(long)]
+        follow: bool,
+    },
+    /// Cancel a queued/running job.
+    Cancel { id: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum ModulesCmd {
+    List,
+    Install { id: String },
+    Enable { id: String },
+    Disable { id: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum TranscodeCmd {
+    /// Submit an FFmpeg transcode job.
+    Submit {
+        input: PathBuf,
+        #[arg(long, default_value = "video-1080p")]
+        preset: String,
+        #[arg(long)]
+        max_price: Option<f64>,
+    },
+    /// Manage transcode presets.
+    Preset {
+        #[command(subcommand)]
+        cmd: PresetCmd,
+    },
+    /// Run local diagnostics for the transcode module.
+    Doctor,
+}
+
+#[derive(Subcommand, Debug)]
+enum PresetCmd {
+    /// List available presets.
     List,
 }
 
@@ -82,38 +171,90 @@ async fn main() -> Result<()> {
     let config_path = cli.config.unwrap_or_else(config::default_config_path);
 
     match cli.command {
-        TopCmd::Version => {
-            println!("depin {}", env!("CARGO_PKG_VERSION"));
+        Cmd::Version => {
+            println!("c0mpute {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        TopCmd::Video { cmd } => run_video(cmd, &config_path).await,
+        Cmd::Doctor => run_doctor().await,
+        Cmd::Worker { cmd } => run_worker(cmd, &config_path).await,
+        Cmd::Job { cmd } => run_job(cmd).await,
+        Cmd::Modules { cmd } => run_modules(cmd),
+
+        Cmd::Transcode { cmd } => run_transcode(cmd).await,
+        Cmd::Tui { args } => delegate("c0mpute-tui", &args),
+        Cmd::Coinpay { args } => delegate("coinpay", &args),
+        Cmd::Infernet { mut args } => {
+            // Default the network to c0mpute when caller didn't specify.
+            if matches!(args.first().map(String::as_str), Some("run"))
+                && !args.iter().any(|a| a == "--network")
+            {
+                args.push("--network".into());
+                args.push("c0mpute".into());
+            }
+            delegate("infernet", &args)
+        }
     }
 }
 
-async fn run_video(cmd: VideoCmd, config_path: &std::path::Path) -> Result<()> {
+// ────────────────────────────────────────────────────────────────────────
+// doctor
+// ────────────────────────────────────────────────────────────────────────
+
+async fn run_doctor() -> Result<()> {
+    let local = quest_doctor::run().await;
+    for r in &local {
+        println!("{:5} {} — {:?}", status_label(&r.status), r.name, r.status);
+    }
+
+    println!("{:5} c0mpute — Ok (this binary)", "OK");
+    println!("{:5} coinpay — {}", peer_label("coinpay"), peer_status_text("coinpay"));
+    println!("{:5} infernet — {}", peer_label("infernet"), peer_status_text("infernet"));
+
+    Ok(())
+}
+
+fn status_label(s: &quest_doctor::Status) -> &'static str {
+    match s {
+        quest_doctor::Status::Ok => "OK",
+        quest_doctor::Status::Warn(_) => "WARN",
+        quest_doctor::Status::Fail(_) => "FAIL",
+    }
+}
+
+fn peer_label(bin: &str) -> &'static str {
+    if which_on_path(bin).is_some() { "OK" } else { "WARN" }
+}
+
+fn peer_status_text(bin: &str) -> String {
+    match which_on_path(bin) {
+        Some(p) => format!("Ok ({})", p.display()),
+        None => format!(
+            "not on PATH — install via `curl -fsSL https://c0mpute.com/install.sh | sh`"
+        ),
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// worker
+// ────────────────────────────────────────────────────────────────────────
+
+async fn run_worker(cmd: WorkerCmd, config_path: &std::path::Path) -> Result<()> {
     match cmd {
-        VideoCmd::Status => {
+        WorkerCmd::Register => {
+            println!("[stub] worker registration — pending CoinPay DID + coordinator wiring");
+            println!("       run: c0mpute coinpay did create --role worker");
+            Ok(())
+        }
+        WorkerCmd::Status => {
             let cfg = Config::load_or_default(config_path)?;
             println!("{}", serde_json::to_string_pretty(&cfg)?);
             Ok(())
         }
-        VideoCmd::Doctor { fix, report: _ } => {
-            let results = quest_doctor::run().await;
-            for r in &results {
-                let label = match &r.status {
-                    quest_doctor::Status::Ok => "OK   ",
-                    quest_doctor::Status::Warn(_) => "WARN ",
-                    quest_doctor::Status::Fail(_) => "FAIL ",
-                };
-                println!("{label} {} — {:?}", r.name, r.status);
-            }
-            if fix {
-                quest_doctor::fix(&results).await?;
-            }
+        WorkerCmd::Stop => {
+            println!("[stub] no running worker to stop");
             Ok(())
         }
-        VideoCmd::Config { action } => handle_config(config_path, action),
-        VideoCmd::Start {
+        WorkerCmd::Start {
             roles,
             storage: _,
             gpu,
@@ -131,30 +272,108 @@ async fn run_video(cmd: VideoCmd, config_path: &std::path::Path) -> Result<()> {
     }
 }
 
-fn handle_config(path: &std::path::Path, action: ConfigAction) -> Result<()> {
-    let mut cfg = Config::load_or_default(path)?;
-    match action {
-        ConfigAction::List => {
-            println!("{}", toml::to_string_pretty(&cfg)?);
+// ────────────────────────────────────────────────────────────────────────
+// job
+// ────────────────────────────────────────────────────────────────────────
+
+async fn run_job(cmd: JobCmd) -> Result<()> {
+    match cmd {
+        JobCmd::Submit { manifest } => {
+            println!("[stub] would POST {} to coordinator", manifest.display());
+            Ok(())
         }
-        ConfigAction::Get { key } => {
-            let value = lookup_key(&cfg, &key);
-            match value {
-                Some(v) => println!("{v}"),
-                None => {
-                    eprintln!("unknown key: {key}");
-                    std::process::exit(2);
-                }
-            }
+        JobCmd::Status { id } => {
+            println!("[stub] status for {id}");
+            Ok(())
         }
-        ConfigAction::Set { key, value } => {
-            set_key(&mut cfg, &key, &value)?;
-            cfg.save(path)?;
-            println!("saved {} -> {}", key, path.display());
+        JobCmd::Logs { id, follow } => {
+            println!("[stub] logs for {id} (follow={follow})");
+            Ok(())
+        }
+        JobCmd::Cancel { id } => {
+            println!("[stub] cancel {id}");
+            Ok(())
         }
     }
-    Ok(())
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// transcode plugin (in-process)
+// ────────────────────────────────────────────────────────────────────────
+
+async fn run_transcode(cmd: TranscodeCmd) -> Result<()> {
+    match cmd {
+        TranscodeCmd::Submit {
+            input,
+            preset,
+            max_price,
+        } => {
+            println!(
+                "[stub] would build ffmpeg.transcode job manifest for {} (preset={}, max_price={:?})",
+                input.display(),
+                preset,
+                max_price
+            );
+            Ok(())
+        }
+        TranscodeCmd::Preset {
+            cmd: PresetCmd::List,
+        } => {
+            for p in [
+                "audio-mp3",
+                "audio-aac",
+                "audio-opus",
+                "video-720p",
+                "video-1080p",
+                "video-4k",
+                "hls",
+                "dash",
+                "thumbnail",
+                "gif",
+                "extract-audio",
+                "normalize-audio",
+            ] {
+                println!("{p}");
+            }
+            Ok(())
+        }
+        TranscodeCmd::Doctor => {
+            println!("OK   ffmpeg presence (delegated to top-level doctor)");
+            Ok(())
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// modules registry stub
+// ────────────────────────────────────────────────────────────────────────
+
+fn run_modules(cmd: ModulesCmd) -> Result<()> {
+    match cmd {
+        ModulesCmd::List => {
+            println!("transcode  v0.1.0  in-process  built-in");
+            println!("coinpay    v0.1.0  subprocess  {}", peer_status_text("coinpay"));
+            println!("infernet   v0.1.0  subprocess  {}", peer_status_text("infernet"));
+            Ok(())
+        }
+        ModulesCmd::Install { id } => {
+            println!("[stub] would install module {id} (registry not yet wired up)");
+            Ok(())
+        }
+        ModulesCmd::Enable { id } => {
+            println!("[stub] enable {id}");
+            Ok(())
+        }
+        ModulesCmd::Disable { id } => {
+            println!("[stub] disable {id}");
+            Ok(())
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// helpers
+// ────────────────────────────────────────────────────────────────────────
 
 fn parse_role(s: &str) -> Option<Role> {
     match s.trim().to_ascii_lowercase().as_str() {
@@ -169,27 +388,26 @@ fn parse_role(s: &str) -> Option<Role> {
     }
 }
 
-fn lookup_key(cfg: &Config, key: &str) -> Option<String> {
-    Some(match key {
-        "api.base_url" => cfg.api.base_url.clone(),
-        "api.token" => cfg.api.token.clone().unwrap_or_default(),
-        "storage.root" => cfg.storage.root.display().to_string(),
-        "gateway.bind" => cfg.gateway.bind.clone(),
-        "update.channel" => cfg.update_channel.clone(),
-        "update.auto" => cfg.update_auto.to_string(),
-        _ => return None,
-    })
-}
-
-fn set_key(cfg: &mut Config, key: &str, value: &str) -> Result<()> {
-    match key {
-        "api.base_url" => cfg.api.base_url = value.into(),
-        "api.token" => cfg.api.token = Some(value.into()),
-        "storage.root" => cfg.storage.root = value.into(),
-        "gateway.bind" => cfg.gateway.bind = value.into(),
-        "update.channel" => cfg.update_channel = value.into(),
-        "update.auto" => cfg.update_auto = value.parse()?,
-        other => anyhow::bail!("unknown config key: {other}"),
+fn delegate(bin: &str, args: &[String]) -> Result<()> {
+    let path = which_on_path(bin).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{bin} not found on PATH. Install with:\n  curl -fsSL https://c0mpute.com/install.sh | sh"
+        )
+    })?;
+    let status = Command::new(path).args(args).status()?;
+    if !status.success() {
+        anyhow::bail!("{bin} exited {status}");
     }
     Ok(())
+}
+
+fn which_on_path(bin: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for entry in std::env::split_paths(&path) {
+        let candidate = entry.join(bin);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }

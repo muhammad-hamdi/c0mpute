@@ -1,0 +1,33 @@
+# c0mpute plugin manifest. See dips/0006-module-model.md.
+
+[module]
+id          = "transcode"
+name        = "FFmpeg Transcoding"
+version     = "0.1.0"
+kind        = "workload"
+description = "Decentralized audio/video transcoding via FFmpeg with hardware acceleration (NVENC, QSV, AMF, VideoToolbox, AV1)."
+author      = "Profullstack"
+license     = "Apache-2.0"
+homepage    = "https://c0mpute.com/transcode"
+keywords    = ["ffmpeg", "transcode", "video", "audio", "hls", "av1"]
+
+[module.requirements]
+c0mpute      = ">=0.1.0"
+os           = ["linux", "darwin"]
+arch         = ["x86_64", "aarch64"]
+capabilities = ["ffmpeg", "gpu:nvidia?", "gpu:intel?", "gpu:amd?"]
+
+[module.workloads]
+"ffmpeg.transcode" = { command = "transcode", validation = "ffprobe" }
+
+[module.dispatch]
+mode = "in-process"
+# In-process modules are compiled into the c0mpute binary itself. The
+# Rust crate at ./lib provides the transcode handler trait impl.
+
+[module.surfaces]
+cli = "c0mpute transcode"
+web = "c0mpute.com/transcode"
+
+[module.config.defaults]
+preset = "video-1080p"

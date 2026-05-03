@@ -1,0 +1,54 @@
+# Contributor toolchain pin. See dips/0004-toolchain-mise.md.
+#
+# Operators DO NOT need this — they install the static `depin` binary via
+# `curl https://depin.quest/video/install.sh | sh`. This file is for people
+# building from source.
+#
+# Bootstrap a fresh checkout with: scripts/dev-setup.sh
+
+[tools]
+rust = "1.92"
+node = "20"
+bun = "1.3"
+
+[env]
+# Local defaults so `bun run dev:coordinator` Just Works without an .env.
+BASE_PATH = "/video"
+
+[tasks.setup]
+description = "Install workspace deps after `mise install`"
+run = "bun install"
+
+[tasks.test]
+description = "Run all tests (Rust unit tests + TS typechecks)"
+run = [
+  "cargo test --manifest-path node/Cargo.toml",
+  "bun run --cwd apps/coordinator lint",
+  "bunx --cwd apps/web tsc --noEmit",
+]
+
+[tasks.fmt]
+description = "Format Rust + TS"
+run = [
+  "cargo fmt --manifest-path node/Cargo.toml",
+]
+
+[tasks.cli]
+description = "Run the c0mpute CLI (pass args after --)"
+run = "cargo run --manifest-path node/Cargo.toml --bin c0mpute --"
+
+[tasks.coinpay]
+description = "Run the coinpay CLI (pass args after --)"
+run = "cargo run --manifest-path node/Cargo.toml --bin coinpay --"
+
+[tasks.infernet]
+description = "Run the infernet CLI (pass args after --)"
+run = "cargo run --manifest-path node/Cargo.toml --bin infernet --"
+
+[tasks.dev-api]
+description = "Run the coordinator API in watch mode"
+run = "bun run dev:coordinator"
+
+[tasks.dev-web]
+description = "Run the Next.js dashboard in watch mode"
+run = "bun run dev:web"

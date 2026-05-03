@@ -1,5 +1,5 @@
 {
-  "name": "@p2p-one/coordinator",
+  "name": "@c0mpute/coordinator",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@p2p-one/shared": "workspace:*",
+    "@c0mpute/shared": "workspace:*",
     "@supabase/supabase-js": "^2.49.0",
     "hono": "^4.7.0",
     "zod": "^3.24.0"

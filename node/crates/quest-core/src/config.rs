@@ -43,7 +43,7 @@ pub struct ApiConfig {
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
-            base_url: "https://depin.quest/video/".into(),
+            base_url: "https://c0mpute.com/".into(),
             token: None,
         }
     }
@@ -87,14 +87,13 @@ fn default_auto_update() -> bool {
 }
 
 pub fn config_dir() -> Option<PathBuf> {
-    // Maps to ~/.config/depin on Linux, ~/Library/Application Support/depin
-    // on macOS. Mirrors the install layout (~/.depin/bin) so users can find
-    // everything in one place.
-    ProjectDirs::from("quest", "depin", "depin").map(|d| d.config_dir().to_path_buf())
+    // ~/.config/c0mpute on Linux, equivalent on macOS. Mirrors the install
+    // layout (~/.c0mpute/bin per DIP-0005).
+    ProjectDirs::from("com", "c0mpute", "c0mpute").map(|d| d.config_dir().to_path_buf())
 }
 
 pub fn data_dir() -> Option<PathBuf> {
-    ProjectDirs::from("quest", "depin", "depin").map(|d| d.data_dir().to_path_buf())
+    ProjectDirs::from("com", "c0mpute", "c0mpute").map(|d| d.data_dir().to_path_buf())
 }
 
 pub fn default_config_path() -> PathBuf {

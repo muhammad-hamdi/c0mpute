@@ -1,4 +1,4 @@
-//! `quest doctor` — runs a checklist, reports per-check status, and (with
+//! `depin video doctor` — runs a checklist, reports per-check status, and (with
 //! `--fix`) attempts auto-remediation for the cheap ones.
 //!
 //! Each check returns a `CheckResult`. Checks are independent and run in
@@ -69,7 +69,7 @@ async fn check_ffmpeg() -> CheckResult {
         return CheckResult::fail(
             "ffmpeg",
             "ffmpeg not on PATH",
-            Some("install jellyfin-ffmpeg or run: quest doctor --fix".into()),
+            Some("install jellyfin-ffmpeg or run: depin video doctor --fix".into()),
         );
     };
 

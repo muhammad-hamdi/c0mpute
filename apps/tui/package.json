@@ -1,0 +1,25 @@
+{
+  "name": "@c0mpute/tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "c0mpute-tui": "./src/index.tsx"
+  },
+  "scripts": {
+    "dev": "bun run src/index.tsx",
+    "build": "bun build src/index.tsx --outfile=dist/c0mpute-tui --target=bun --compile",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "react": "^18.3.0",
+    "react-blessed": "^0.7.2"
+  },
+  "devDependencies": {
+    "@types/blessed": "^0.1.25",
+    "@types/bun": "latest",
+    "@types/react": "^18.3.0",
+    "typescript": "^5.8.0"
+  }
+}

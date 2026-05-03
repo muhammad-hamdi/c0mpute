@@ -1,0 +1,30 @@
+# c0mpute plugin manifest. See dips/0006-module-model.md.
+
+[module]
+id          = "infernet"
+name        = "Infernet Protocol — AI inference"
+version     = "0.1.0"
+kind        = "workload"
+description = "Decentralized AI inference workloads on c0mpute. Runs models on consumer/prosumer GPUs with model-hash and runtime-image verification."
+author      = "Profullstack (downstream of Infernet Protocol)"
+license     = "Apache-2.0"
+homepage    = "https://c0mpute.com/infernet"
+keywords    = ["ai", "llm", "inference", "gpu"]
+
+[module.requirements]
+c0mpute      = ">=0.1.0"
+os           = ["linux", "darwin"]
+arch         = ["x86_64", "aarch64"]
+capabilities = ["gpu:nvidia?", "model-runtime"]
+
+[module.workloads]
+"infernet.inference" = { command = "run", validation = "schema_and_spotcheck" }
+
+[module.dispatch]
+mode   = "subprocess"
+binary = "infernet"
+# Standalone CLI on PATH. See plugins/infernet/cli for the source.
+
+[module.surfaces]
+cli = "infernet"
+# web = "c0mpute.com/infernet"  # planned, see roadmap

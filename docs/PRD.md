@@ -1,11 +1,19 @@
 # Quest — Decentralized Video Transcoding & Hosting Network
 
+> **⚠️ Superseded for v1 architecture by [`c0mpute-v1.md`](c0mpute-v1.md).**
+> Quest is now the **transcode module** of the c0mpute.com network rather
+> than a standalone product. This file is retained as the design source for
+> FFmpeg workload internals (codec matrix, pricing, validation strategies,
+> erasure coding, libp2p protocol IDs). Anything in this PRD that conflicts
+> with the c0mpute v1 PRD — brand, install flow, CLI shape, namespace,
+> payments, identity — defers to the v1 PRD.
+
 **Product Requirements Document**
-**Status:** Draft v0.1
+**Status:** Draft v0.1 (superseded for v1 architecture; module-of-c0mpute role)
 **Owner:** TBD
 **Last updated:** 2026-05-03
-**Repo (planned):** github.com/depinquest/quest
-**Dashboard:** https://depin.quest/video
+**Repo:** github.com/profullstack/c0mpute (transcode module lives in-tree)
+**Dashboard:** https://c0mpute.com/dashboard (not depin.quest/video)
 
 > **Namespace note:** All product surfaces — dashboard, API, install script,
 > release artifacts — live under the `/video` path on `depin.quest`. The root
@@ -85,7 +93,7 @@ Quest fixes all four.
 
 ### What customers get
 
-1. Upload a source video (drag-drop, S3 URL, or `quest upload` CLI command).
+1. Upload a source video (drag-drop, S3 URL, or `depin video upload` CLI command).
 2. Quest transcodes it to multiple renditions (1080p/720p/480p H.264 + AV1) via the distributed worker pool.
 3. Customer gets back a root content hash (`quest://blake3:abc123...`) and an HLS playlist URL served by gateway nodes.
 4. Drop the embed code on a website — it just plays.
@@ -94,7 +102,7 @@ Quest fixes all four.
 ### What providers get
 
 1. `curl https://depin.quest/video/install.sh | sh` installs the Quest node.
-2. `quest start --gpu --storage 500GB` runs it.
+2. `depin video start --gpu --storage 500GB` runs it.
 3. Earnings accrue in real-time, visible in the dashboard.
 4. Withdraw to any wallet supported by CoinPayments.
 
@@ -204,7 +212,7 @@ All public surfaces live under `https://depin.quest/video`:
 | Coordinator REST | `/video/api/v1/...` |
 | CoinPayments IPN | `/video/api/v1/webhooks/coinpayments` |
 | Install script | `/video/install.sh` |
-| Release artifacts | `/video/releases/<version>/quest-<os>-<arch>.tar.gz` |
+| Release artifacts | `/video/releases/<version>/depin-<os>-<arch>.tar.gz` |
 | Known-issues feed | `/video/api/v1/known-issues` |
 | Public release manifest | `/video/api/v1/releases/latest` |
 
@@ -256,7 +264,7 @@ A single node binary can take on any combination of these roles:
 3. **Gateway role** — public HTTP endpoint, fetches chunks from DHT, serves HLS to browsers. Resource: bandwidth + reasonable uptime.
 4. **Verifier role** — runs random challenges against other nodes, reports results. Lightweight, all nodes do this opportunistically.
 
-Configured via `quest start --roles storage,transcode` or via TOML config.
+Configured via `depin video start --roles storage,transcode` or via TOML config.
 
 ### Modules
 
@@ -453,7 +461,7 @@ POST   /video/api/v1/webhooks/coinpayments     CoinPayments IPN endpoint
 
 GET    /video/api/v1/network/health            Public network stats (peer count, etc)
 GET    /video/api/v1/releases/latest           Current release manifest for self-upgrade
-GET    /video/api/v1/known-issues              Known-issues feed for `quest doctor`
+GET    /video/api/v1/known-issues              Known-issues feed for `depin video doctor`
 ```
 
 ### Realtime subscriptions (Supabase)
@@ -597,11 +605,11 @@ depin --help                               # List product lines
   2. Verifies SHA-256 + minisign signature.
   3. Atomically swaps the binary using `self_update` crate semantics.
   4. Re-execs itself with the same arguments and PID inheritance where possible.
-- Configurable: `quest config set update.channel stable|beta|nightly`
-- Configurable: `quest config set update.auto false` (still upgrades for security advisories)
+- Configurable: `depin video config set update.channel stable|beta|nightly`
+- Configurable: `depin video config set update.auto false` (still upgrades for security advisories)
 - A blocked rollback list prevents downgrade past known-vulnerable versions.
 
-### Self-error-fixing (`quest doctor`)
+### Self-error-fixing (`depin video doctor`)
 
 The `doctor` command runs through a checklist and either reports or auto-fixes common issues:
 
@@ -618,7 +626,7 @@ The `doctor` command runs through a checklist and either reports or auto-fixes c
 | Outbound connectivity to coordinator | Test, suggest proxy config |
 | Recent error log clusters | Match against known-issues feed at `depin.quest/video/api/v1/known-issues`; apply server-suggested fix |
 
-The "known-issues feed" is the killer feature: when a bug ships, we publish a remediation entry that says "if you see error pattern `EOF in transcode worker`, set `transcode.timeout = 600`". The node fetches this feed periodically and `quest doctor` references it. This means we can fix entire fleets of bad behavior without a binary release.
+The "known-issues feed" is the killer feature: when a bug ships, we publish a remediation entry that says "if you see error pattern `EOF in transcode worker`, set `transcode.timeout = 600`". The node fetches this feed periodically and `depin video doctor` references it. This means we can fix entire fleets of bad behavior without a binary release.
 
 ### Self-heal daemon
 
@@ -760,7 +768,7 @@ For comparison: Mux charges $0.04/min for 1080p H.264 encoding. Bunny.net charge
 - Daily batch settlement: at 00:00 UTC, sum each provider's pending earnings.
 - Above $10 threshold → trigger CoinPayments transfer to provider's configured wallet.
 - Below $10 → roll forward to next day.
-- Provider can withdraw on-demand for a $0.50 flat fee via `quest withdraw`.
+- Provider can withdraw on-demand for a $0.50 flat fee via `depin video withdraw`.
 
 ### Top-ups
 
@@ -917,7 +925,7 @@ For comparison: Mux charges $0.04/min for 1080p H.264 encoding. Bunny.net charge
 
 - AV1 transcoding
 - Self-upgrading CLI with `curl|sh` install
-- `quest doctor` with auto-fix
+- `depin video doctor` with auto-fix
 - Public bootstrap nodes
 - 100-node testnet
 - First 10 paying customers
@@ -1006,11 +1014,11 @@ The actual script lives at `scripts/install.sh` and is served from
 
 ```bash
 #!/usr/bin/env sh
-set -e
+set -eu
 
-QUEST_VERSION="${QUEST_VERSION:-latest}"
-QUEST_HOME="${QUEST_HOME:-$HOME/.quest}"
-RELEASE_BASE="https://depin.quest/video/releases"
+DEPIN_VERSION="${DEPIN_VERSION:-latest}"
+DEPIN_HOME="${DEPIN_HOME:-$HOME/.depin}"
+RELEASE_BASE="${DEPIN_RELEASE_BASE:-https://depin.quest/video/releases}"
 
 detect_platform() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -1029,40 +1037,40 @@ detect_platform() {
 
 main() {
   platform=$(detect_platform)
-  url="${RELEASE_BASE}/${QUEST_VERSION}/quest-${platform}.tar.gz"
+  url="${RELEASE_BASE}/${DEPIN_VERSION}/depin-${platform}.tar.gz"
   sig_url="${url}.minisig"
 
-  mkdir -p "$QUEST_HOME/bin"
-  echo "→ Downloading Quest ${QUEST_VERSION} for ${platform}..."
-  curl -fsSL "$url" -o /tmp/quest.tar.gz
-  curl -fsSL "$sig_url" -o /tmp/quest.tar.gz.minisig
+  mkdir -p "$DEPIN_HOME/bin"
+  echo "→ Downloading depin ${DEPIN_VERSION} for ${platform}..."
+  curl -fsSL "$url" -o /tmp/depin.tar.gz
+  curl -fsSL "$sig_url" -o /tmp/depin.tar.gz.minisig
 
   echo "→ Verifying signature..."
   # Embedded minisign pubkey (rotation handled per §16)
   # ... verification logic ...
 
-  echo "→ Installing to $QUEST_HOME/bin..."
-  tar -xzf /tmp/quest.tar.gz -C "$QUEST_HOME/bin"
-  chmod +x "$QUEST_HOME/bin/quest"
+  echo "→ Installing to $DEPIN_HOME/bin..."
+  tar -xzf /tmp/depin.tar.gz -C "$DEPIN_HOME/bin"
+  chmod +x "$DEPIN_HOME/bin/depin"
 
   for rc in ~/.bashrc ~/.zshrc ~/.profile; do
-    if [ -f "$rc" ] && ! grep -q "QUEST_HOME" "$rc"; then
-      echo "export PATH=\"\$HOME/.quest/bin:\$PATH\"" >> "$rc"
+    if [ -f "$rc" ] && ! grep -q "\.depin/bin" "$rc"; then
+      echo "export PATH=\"\$HOME/.depin/bin:\$PATH\"" >> "$rc"
     fi
   done
 
   echo "→ Running diagnostics..."
-  "$QUEST_HOME/bin/quest" doctor || true
+  "$DEPIN_HOME/bin/depin" video doctor || true
 
   cat <<EOF
 
-✓ Quest installed to $QUEST_HOME/bin/quest
+✓ depin installed to $DEPIN_HOME/bin/depin
 
 Next steps:
-  1. Restart your shell or:  export PATH="\$HOME/.quest/bin:\$PATH"
-  2. Register your node:      quest config set api.token <YOUR_TOKEN>
+  1. Restart your shell or:  export PATH="\$HOME/.depin/bin:\$PATH"
+  2. Register your node:      depin video config set api.token <YOUR_TOKEN>
                               (get one at https://depin.quest/video/app/provider)
-  3. Start earning:           quest start --roles storage,transcode
+  3. Start earning:           depin video start --roles storage,transcode
 
 Docs: https://depin.quest/video/docs
 

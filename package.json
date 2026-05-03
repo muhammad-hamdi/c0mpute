@@ -1,19 +1,19 @@
 {
-  "name": "p2p-one",
+  "name": "c0mpute",
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "plugins/*/web"
   ],
   "scripts": {
-    "dev:web": "bun run --cwd apps/web dev",
-    "dev:cli": "bun run --cwd apps/cli dev",
+    "dev:web": "bun run --cwd plugins/transcode/web dev",
     "dev:coordinator": "bun run --cwd apps/coordinator dev",
-    "node:build": "cargo build --manifest-path node/Cargo.toml",
-    "node:run": "cargo run --manifest-path node/Cargo.toml --bin quest --",
-    "node:test": "cargo test --manifest-path node/Cargo.toml",
-    "build": "bun run --cwd packages/shared build && bun run --cwd apps/web build && bun run --cwd apps/cli build",
-    "lint": "bun run --cwd apps/web lint && bun run --cwd apps/cli lint && bun run --cwd apps/coordinator lint"
+    "build": "bun run --cwd packages/shared build && bun run --cwd plugins/transcode/web build",
+    "lint": "bun run --cwd apps/coordinator lint",
+    "cargo:build": "cargo build --bins",
+    "cargo:run": "cargo run --bin c0mpute --",
+    "cargo:test": "cargo test --workspace"
   },
   "devDependencies": {
     "typescript": "^5.8.0"

@@ -1,12 +1,52 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0ea5e9;
-  --color-surface: #0f172a;
-  --color-text: #f8fafc;
+  /* Terminal-inspired palette. Black background, mono everywhere, a
+     single accent. */
+  --color-bg: #0a0a0b;
+  --color-fg: #d4d4d4;
+  --color-dim: #6b7280;
+  --color-accent: #4ade80; /* terminal green */
+  --color-accent-dim: #166534;
+  --color-rule: #1f2937;
+  --color-card: #111114;
+  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, monospace;
 }
 
+html,
 body {
-  background-color: var(--color-surface);
-  color: var(--color-text);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  font-feature-settings: "ss01", "ss02";
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--color-accent-dim);
+  color: var(--color-fg);
+}
+
+/* Tiny utility helpers for the landing — terminal "prompt" prefix etc. */
+.prompt::before {
+  content: "$ ";
+  color: var(--color-accent);
+}
+.comment {
+  color: var(--color-dim);
+}
+.accent {
+  color: var(--color-accent);
+}
+.rule {
+  border-top: 1px solid var(--color-rule);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--color-accent-dim);
+}
+a:hover {
+  border-bottom-color: var(--color-accent);
 }

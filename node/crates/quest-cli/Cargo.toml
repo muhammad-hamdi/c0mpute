@@ -6,7 +6,7 @@ license.workspace = true
 description = "Quest node CLI binary."
 
 [[bin]]
-name = "depin"
+name = "c0mpute"
 path = "src/main.rs"
 
 [dependencies]
