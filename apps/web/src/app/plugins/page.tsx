@@ -112,8 +112,8 @@ function PluginCard({ p }: { p: PluginManifest }) {
             homepage ↗
           </a>
         )}
-        {p.repository && (
-          <a href={p.repository} className="!border-0 hover:text-[var(--color-accent)]">
+        {p.source && (
+          <a href={p.source} className="!border-0 hover:text-[var(--color-accent)]">
             source ↗
           </a>
         )}

@@ -13,7 +13,7 @@ description = "Decentralized identifiers, wallet linking, escrow, signed receipt
 author      = "Profullstack"
 license     = "MIT"
 homepage    = "https://coinpay.com"
-repository  = "https://github.com/profullstack/c0mpute/tree/master/plugins/coinpay"
+source      = "https://github.com/profullstack/c0mpute/tree/master/plugins/coinpay"
 keywords    = ["did", "identity", "escrow", "payments", "reputation"]
 
 [module.requirements]
@@ -29,10 +29,10 @@ binary = "coinpay"
 # `c0mpute coinpay <args>` straight through.
 
 [module.install]
-# `c0mpute plugin install coinpay` chains to this URL.
-# `curl -fsSL https://c0mpute.com/install.sh | sh` also chains here when
-# --no-coinpay is not passed.
-url = "https://coinpay.com/install.sh"
+# Install URL routed through c0mpute.com (which chains to upstream
+# coinpay). Stable URL — won't break if upstream rotates theirs.
+# Source script: plugins/coinpay/install.sh in this repo.
+url = "https://c0mpute.com/plugins/coinpay/install.sh"
 
 [module.surfaces]
 cli = "coinpay"

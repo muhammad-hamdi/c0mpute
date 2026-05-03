@@ -19,7 +19,7 @@ export interface PluginManifest {
   author?: string;
   license?: string;
   homepage?: string;
-  repository?: string;
+  source?: string;
   keywords?: string[];
   requirements?: {
     c0mpute?: string;
@@ -75,7 +75,7 @@ function loadOne(id: string): PluginManifest | null {
     author: typeof m.author === "string" ? m.author : undefined,
     license: typeof m.license === "string" ? m.license : undefined,
     homepage: typeof m.homepage === "string" ? m.homepage : undefined,
-    repository: typeof m.repository === "string" ? m.repository : undefined,
+    source: typeof m.source === "string" ? m.source : undefined,
     keywords: Array.isArray(m.keywords) ? (m.keywords as string[]) : undefined,
     requirements: m.requirements as PluginManifest["requirements"],
     workloads: m.workloads as PluginManifest["workloads"],
@@ -95,14 +95,15 @@ export function tagline(p: PluginManifest): string {
 
 /**
  * Install command shown on each plugin card.
+ *
+ * In-process plugins ship as part of the c0mpute binary itself —
+ * installing c0mpute installs them. Subprocess plugins install via
+ * `c0mpute plugin install <id>`, which resolves to
+ * `https://c0mpute.com/plugins/<id>/install.sh`.
  */
 export function installCommand(p: PluginManifest): string {
-  // The transcode plugin ships in-process inside c0mpute itself.
   if (p.dispatch?.mode === "in-process") {
     return "curl -fsSL https://c0mpute.com/install.sh | sh";
-  }
-  if (p.install?.url) {
-    return `c0mpute plugin install ${p.install.url}`;
   }
   return `c0mpute plugin install ${p.id}`;
 }

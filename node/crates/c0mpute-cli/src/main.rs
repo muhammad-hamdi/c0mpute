@@ -58,6 +58,7 @@ enum Cmd {
         cmd: JobCmd,
     },
     /// Plugin management (list / install / enable / disable / uninstall).
+    #[command(alias = "plugins")]
     Plugin {
         #[command(subcommand)]
         cmd: PluginCmd,
@@ -384,36 +385,36 @@ fn run_plugin(cmd: PluginCmd) -> Result<()> {
 
 /// Resolve a `c0mpute plugin install <target>` argument and dispatch.
 ///
-/// Resolution rules (per DIP-0006):
-///   1. If target looks like a URL ending in `install.sh`, chain-call it.
-///   2. If target is an http(s) URL ending in `.tar.gz`, download +
-///      verify the signed tarball.
-///   3. Otherwise treat target as a marketplace plugin id and resolve via
-///      `c0mpute.com/api/v1/plugins/<id>`.
+/// Accepts either:
+///   - a plugin **id** registered in the c0mpute marketplace, in which
+///     case we chain to `https://c0mpute.com/plugins/<id>/install.sh`
+///   - or any **install.sh URL** (third-party plugins published at
+///     their own URL — e.g. a GitHub raw URL)
 ///
-/// Today only #1 is wired (chains to a third-party install.sh). #2 and #3
-/// are stubs.
+/// Both flows pipe `curl -fsSL <url>` into `sh`. Future: minisign
+/// signature verification before execution (per DIP-0006).
 fn install_plugin(target: &str) -> Result<()> {
-    if target.starts_with("http://") || target.starts_with("https://") {
-        if target.ends_with("install.sh") || target.ends_with("install") {
-            println!(
-                "[chain] curl -fsSL {target} | sh   # would run the upstream installer"
-            );
-            // Real implementation: spawn `curl -fsSL <target> | sh` after
-            // confirming integrity (signed checksum). Stubbed for safety
-            // until the marketplace ships a signing scheme.
-            return Ok(());
-        }
-        if target.ends_with(".tar.gz") {
-            println!("[stub] would download + verify minisign signature for {target}");
-            return Ok(());
-        }
-        anyhow::bail!(
-            "unsupported plugin URL (expected install.sh or .tar.gz): {target}"
-        );
+    let url = resolve_plugin_target(target);
+    println!("→ installing plugin via {url}");
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("curl -fsSL {url} | sh"))
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("plugin install failed (exit {status})");
     }
-    println!("[stub] would resolve marketplace plugin id `{target}` via c0mpute.com");
     Ok(())
+}
+
+fn resolve_plugin_target(target: &str) -> String {
+    let t = target.trim();
+    if t.starts_with("http://") || t.starts_with("https://") {
+        return t.to_string();
+    }
+    // Treat anything else as a plugin id and resolve through the
+    // c0mpute marketplace. The route at c0mpute.com/plugins/<id>/install.sh
+    // serves the manifest-checked-in install script for that plugin.
+    format!("https://c0mpute.com/plugins/{t}/install.sh")
 }
 
 // ────────────────────────────────────────────────────────────────────────
