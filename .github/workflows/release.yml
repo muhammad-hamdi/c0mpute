@@ -36,8 +36,12 @@ jobs:
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
+          # Both Mac targets cross-built from the arm64 runner — Intel
+          # mac runners (macos-13) have minimal capacity and queue
+          # indefinitely. Apple's Xcode toolchain cross-compiles
+          # x86_64-apple-darwin natively from arm64.
           - platform: darwin-x86_64
-            os: macos-13
+            os: macos-latest
             target: x86_64-apple-darwin
           - platform: darwin-aarch64
             os: macos-latest
