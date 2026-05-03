@@ -1,12 +1,12 @@
 {
-  "name": "@c0mpute/web",
+  "name": "c0mpute",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "bunx next dev",
+    "build": "bunx next build",
+    "start": "bunx next start"
   },
   "dependencies": {
     "next": "^16.0.0",
