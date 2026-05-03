@@ -19,14 +19,31 @@ const nextConfig = {
     root: path.resolve(__dirname, "..", ".."),
   },
 
-  // 308 www.c0mpute.com → c0mpute.com (any path).
   async redirects() {
     return [
+      // www.c0mpute.com → c0mpute.com (any path).
       {
         source: "/:path*",
         has: [{ type: "host", value: "www.c0mpute.com" }],
         destination: "https://c0mpute.com/:path*",
         permanent: true,
+      },
+      // /releases/latest/<artifact> → GitHub Releases latest download.
+      // GitHub maintains the redirect from `latest/download/<file>` to
+      // whichever the most recent release is, so we don't have to track
+      // versions on c0mpute.com.
+      {
+        source: "/releases/latest/:artifact",
+        destination:
+          "https://github.com/profullstack/c0mpute/releases/latest/download/:artifact",
+        permanent: false,
+      },
+      // /releases/<version>/<artifact> → GitHub Releases pinned version.
+      {
+        source: "/releases/:version/:artifact",
+        destination:
+          "https://github.com/profullstack/c0mpute/releases/download/:version/:artifact",
+        permanent: false,
       },
     ];
   },
