@@ -12,9 +12,10 @@
 # unless --force is passed.
 #
 # Flags:
-#   --minimal       Install only c0mpute (skip coinpay + infernet)
+#   --minimal       Install only c0mpute (skip coinpay + infernet + transcode deps)
 #   --no-coinpay    Skip CoinPay CLI
 #   --no-infernet   Skip Infernet CLI
+#   --no-transcode  Skip transcode plugin's system deps (ffmpeg)
 #   --worker        Add Docker / FFmpeg readiness checks
 #   --developer     Verbose diagnostics
 #   --force         Reinstall over existing
@@ -32,10 +33,12 @@ RELEASE_BASE="${C0MPUTE_RELEASE_BASE:-https://c0mpute.com/releases}"
 # is the in-repo plugins/<id>/install.sh and chains to upstream itself.
 COINPAY_INSTALL_URL="${COINPAY_INSTALL_URL:-https://c0mpute.com/plugins/coinpay/install.sh}"
 INFERNET_INSTALL_URL="${INFERNET_INSTALL_URL:-https://c0mpute.com/plugins/infernet/install.sh}"
+TRANSCODE_INSTALL_URL="${TRANSCODE_INSTALL_URL:-https://c0mpute.com/plugins/transcode/install.sh}"
 
 INSTALL_C0MPUTE=1
 INSTALL_COINPAY=1
 INSTALL_INFERNET=1
+INSTALL_TRANSCODE=1
 WORKER_MODE=0
 DEVELOPER_MODE=0
 FORCE=0
@@ -47,9 +50,10 @@ ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --minimal)      INSTALL_COINPAY=0; INSTALL_INFERNET=0 ;;
+    --minimal)      INSTALL_COINPAY=0; INSTALL_INFERNET=0; INSTALL_TRANSCODE=0 ;;
     --no-coinpay)   INSTALL_COINPAY=0 ;;
     --no-infernet)  INSTALL_INFERNET=0 ;;
+    --no-transcode) INSTALL_TRANSCODE=0 ;;
     --worker)       WORKER_MODE=1 ;;
     --developer)    DEVELOPER_MODE=1 ;;
     --force)        FORCE=1 ;;
@@ -254,6 +258,23 @@ chain_install() {
   fi
 }
 
+# transcode is in-process (no separate binary), but it depends on
+# ffmpeg. Delegate to the plugin's own install.sh — local copy if
+# we're running in-repo, otherwise the published one.
+install_transcode_deps() {
+  local_path="$(dirname "$0")/../plugins/transcode/install.sh"
+  if [ -f "$local_path" ]; then
+    say "running transcode plugin installer (local: $local_path)"
+    sh "$local_path" || warn "transcode deps install reported a problem"
+    return 0
+  fi
+  say "running transcode plugin installer (via $TRANSCODE_INSTALL_URL)"
+  if ! curl -fsSL "$TRANSCODE_INSTALL_URL" | sh; then
+    warn "transcode deps install failed (continuing without ffmpeg)"
+    return 1
+  fi
+}
+
 # ────────────────────────────────────────────────────────────────────────
 # PATH + diagnostics
 # ────────────────────────────────────────────────────────────────────────
@@ -349,6 +370,10 @@ main() {
 
   ensure_path
 
+  # transcode is built into the c0mpute binary, but its system dep
+  # (ffmpeg) lives in the plugin's installer.
+  if [ "$INSTALL_TRANSCODE" -eq 1 ]; then install_transcode_deps; fi
+
   if [ "$WORKER_MODE" -eq 1 ]; then worker_checks; fi
 
   print_versions
@@ -413,6 +438,7 @@ EOF
     echo "  RELEASE_BASE=$RELEASE_BASE"
     echo "  COINPAY_INSTALL_URL=$COINPAY_INSTALL_URL"
     echo "  INFERNET_INSTALL_URL=$INFERNET_INSTALL_URL"
+    echo "  TRANSCODE_INSTALL_URL=$TRANSCODE_INSTALL_URL"
     echo "  PLATFORM=$platform"
   fi
 }
