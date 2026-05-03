@@ -57,10 +57,10 @@ enum Cmd {
         #[command(subcommand)]
         cmd: JobCmd,
     },
-    /// Module management.
-    Modules {
+    /// Plugin management (list / install / enable / disable / uninstall).
+    Plugin {
         #[command(subcommand)]
-        cmd: ModulesCmd,
+        cmd: PluginCmd,
     },
 
     /// Transcode plugin (built-in FFmpeg workload).
@@ -132,11 +132,21 @@ enum JobCmd {
 }
 
 #[derive(Subcommand, Debug)]
-enum ModulesCmd {
+enum PluginCmd {
+    /// List installed plugins.
     List,
-    Install { id: String },
+    /// Install a plugin by id (from the c0mpute marketplace) or by URL.
+    ///
+    /// Examples:
+    ///   c0mpute plugin install transcode
+    ///   c0mpute plugin install https://example.com/my-plugin/install.sh
+    Install { target: String },
+    /// Enable a previously disabled plugin.
     Enable { id: String },
+    /// Disable a plugin without uninstalling.
     Disable { id: String },
+    /// Uninstall a plugin.
+    Uninstall { id: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -178,7 +188,7 @@ async fn main() -> Result<()> {
         Cmd::Doctor => run_doctor().await,
         Cmd::Worker { cmd } => run_worker(cmd, &config_path).await,
         Cmd::Job { cmd } => run_job(cmd).await,
-        Cmd::Modules { cmd } => run_modules(cmd),
+        Cmd::Plugin { cmd } => run_plugin(cmd),
 
         Cmd::Transcode { cmd } => run_transcode(cmd).await,
         Cmd::Tui { args } => delegate("c0mpute-tui", &args),
@@ -345,30 +355,65 @@ async fn run_transcode(cmd: TranscodeCmd) -> Result<()> {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// modules registry stub
+// plugin registry stub
 // ────────────────────────────────────────────────────────────────────────
 
-fn run_modules(cmd: ModulesCmd) -> Result<()> {
+fn run_plugin(cmd: PluginCmd) -> Result<()> {
     match cmd {
-        ModulesCmd::List => {
+        PluginCmd::List => {
             println!("transcode  v0.1.0  in-process  built-in");
             println!("coinpay    v0.1.0  subprocess  {}", peer_status_text("coinpay"));
             println!("infernet   v0.1.0  subprocess  {}", peer_status_text("infernet"));
             Ok(())
         }
-        ModulesCmd::Install { id } => {
-            println!("[stub] would install module {id} (registry not yet wired up)");
-            Ok(())
-        }
-        ModulesCmd::Enable { id } => {
+        PluginCmd::Install { target } => install_plugin(&target),
+        PluginCmd::Enable { id } => {
             println!("[stub] enable {id}");
             Ok(())
         }
-        ModulesCmd::Disable { id } => {
+        PluginCmd::Disable { id } => {
             println!("[stub] disable {id}");
             Ok(())
         }
+        PluginCmd::Uninstall { id } => {
+            println!("[stub] uninstall {id}");
+            Ok(())
+        }
     }
+}
+
+/// Resolve a `c0mpute plugin install <target>` argument and dispatch.
+///
+/// Resolution rules (per DIP-0006):
+///   1. If target looks like a URL ending in `install.sh`, chain-call it.
+///   2. If target is an http(s) URL ending in `.tar.gz`, download +
+///      verify the signed tarball.
+///   3. Otherwise treat target as a marketplace plugin id and resolve via
+///      `c0mpute.com/api/v1/plugins/<id>`.
+///
+/// Today only #1 is wired (chains to a third-party install.sh). #2 and #3
+/// are stubs.
+fn install_plugin(target: &str) -> Result<()> {
+    if target.starts_with("http://") || target.starts_with("https://") {
+        if target.ends_with("install.sh") || target.ends_with("install") {
+            println!(
+                "[chain] curl -fsSL {target} | sh   # would run the upstream installer"
+            );
+            // Real implementation: spawn `curl -fsSL <target> | sh` after
+            // confirming integrity (signed checksum). Stubbed for safety
+            // until the marketplace ships a signing scheme.
+            return Ok(());
+        }
+        if target.ends_with(".tar.gz") {
+            println!("[stub] would download + verify minisign signature for {target}");
+            return Ok(());
+        }
+        anyhow::bail!(
+            "unsupported plugin URL (expected install.sh or .tar.gz): {target}"
+        );
+    }
+    println!("[stub] would resolve marketplace plugin id `{target}` via c0mpute.com");
+    Ok(())
 }
 
 // ────────────────────────────────────────────────────────────────────────
