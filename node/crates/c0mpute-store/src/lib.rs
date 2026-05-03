@@ -124,7 +124,7 @@ mod tests {
 
     fn tempdir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "quest-store-test-{}",
+            "c0mpute-store-test-{}",
             uuid_like_suffix()
         ));
         std::fs::create_dir_all(&dir).unwrap();
