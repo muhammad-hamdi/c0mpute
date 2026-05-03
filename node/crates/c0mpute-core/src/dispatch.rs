@@ -20,22 +20,27 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use c0mpute_net::topics::{JobBid, JobOffer, job_topic};
+use c0mpute_net::topics::{JobAccept, JobBid, JobOffer, job_topic};
 use c0mpute_net::{GossipMessage, Libp2pNetwork};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info, warn};
+
+use crate::runner::AcceptedJob;
 
 /// Reject job offers older than this — replay protection + freshness
 /// guard.
 pub const MAX_OFFER_AGE: Duration = Duration::from_secs(5 * 60);
 
 /// Spawn a per-workload subscriber. Listens on
-/// `c0mpute/jobs/<workload_type>` and (in this Phase 1 cut) just logs
-/// what comes in. Phase 2 wires real bid evaluation + publication.
+/// `c0mpute/jobs/<workload_type>`:
+///   - bids on every offer we're capable of fulfilling
+///   - watches for accepts naming this peer-id, and forwards the
+///     accepted job to `runner_tx` for execution.
 pub fn run_worker_subscriber(
     net: Arc<Libp2pNetwork>,
     workload_type: String,
     advertised_tags: Vec<String>,
+    runner_tx: Option<mpsc::Sender<AcceptedJob>>,
 ) {
     tokio::spawn(async move {
         let topic = job_topic(&workload_type);
@@ -45,6 +50,7 @@ pub fn run_worker_subscriber(
         }
         info!(%topic, "dispatch: subscribed for workload");
 
+        let our_peer_id = net.peer_id().to_base58();
         let mut rx = net.messages();
         loop {
             let msg: GossipMessage = match rx.recv().await {
@@ -58,10 +64,43 @@ pub fn run_worker_subscriber(
             if msg.topic != topic {
                 continue;
             }
-            // Try parse as JobOffer first, then JobBid (we'll see our
-            // own bids back via gossipsub but ignore them).
+            // Try parse as JobOffer first, then JobAccept. (Bids and
+            // receipts also flow on this topic; we ignore them — bids
+            // are what we PUBLISH, receipts are for the buyer.)
             if let Ok(offer) = serde_json::from_slice::<JobOffer>(&msg.data) {
+                if offer.workload_type != workload_type {
+                    continue;
+                }
                 handle_offer(&net, &topic, &offer, &advertised_tags).await;
+                continue;
+            }
+            if let Ok(accept) = serde_json::from_slice::<JobAccept>(&msg.data) {
+                if accept.workload_type != workload_type {
+                    continue;
+                }
+                if accept.winning_bidder_peer_id != our_peer_id {
+                    debug!(
+                        job_id = %accept.job_id,
+                        winner = %accept.winning_bidder_peer_id,
+                        "dispatch: accept for someone else"
+                    );
+                    continue;
+                }
+                let Some(tx) = runner_tx.as_ref() else {
+                    warn!(
+                        job_id = %accept.job_id,
+                        "dispatch: won bid but no runner wired for this workload"
+                    );
+                    continue;
+                };
+                info!(
+                    job_id = %accept.job_id,
+                    "dispatch: we won — forwarding to runner"
+                );
+                if let Err(e) = tx.send(AcceptedJob { accept }).await {
+                    warn!(err = %e, "dispatch: runner channel closed");
+                }
+                continue;
             }
         }
     });

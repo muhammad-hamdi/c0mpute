@@ -7,6 +7,7 @@ use c0mpute_net::{ChunkSource, Libp2pNetwork, Network, NetworkConfig, bootstrap}
 
 use crate::capabilities::{self, Registry};
 use crate::dispatch;
+use crate::runner;
 use c0mpute_proto::Hash;
 use c0mpute_store::ChunkStore;
 use tracing::info;
@@ -101,9 +102,28 @@ impl Supervisor {
         // Job dispatch: subscribe to c0mpute/jobs/<workload> for each
         // workload our roles imply. Today: only ffmpeg.transcode if
         // the Transcode role is enabled.
+        let cache_root = config::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("./c0mpute-data"))
+            .join("cache");
         for workload_type in dispatch::workload_types_from_roles(&self.config.roles) {
             info!(%workload_type, "subscribing to job topic");
-            dispatch::run_worker_subscriber(net.clone(), workload_type, tags.clone());
+            let runner_tx = match workload_type.as_str() {
+                "ffmpeg.transcode" => {
+                    let ffmpeg_bin = which_ffmpeg().unwrap_or_else(|| "ffmpeg".into());
+                    Some(runner::spawn_transcode_runner(
+                        net.clone(),
+                        cache_root.clone(),
+                        ffmpeg_bin,
+                    ))
+                }
+                _ => None,
+            };
+            dispatch::run_worker_subscriber(
+                net.clone(),
+                workload_type,
+                tags.clone(),
+                runner_tx,
+            );
         }
 
         if self.config.roles.contains(&c0mpute_proto::Role::Gateway) {
@@ -141,6 +161,18 @@ impl Supervisor {
         info!("ctrl-c received; shutting down");
         Ok(())
     }
+}
+
+fn which_ffmpeg() -> Option<std::path::PathBuf> {
+    use std::env;
+    let path = env::var_os("PATH")?;
+    for dir in env::split_paths(&path) {
+        let p = dir.join("ffmpeg");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 struct StoreSource(ChunkStore);

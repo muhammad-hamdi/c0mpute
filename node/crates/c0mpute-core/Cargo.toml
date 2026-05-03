@@ -26,3 +26,10 @@ toml = { workspace = true }
 directories = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+libp2p = { workspace = true }
+tempfile = { workspace = true }

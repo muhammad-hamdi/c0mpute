@@ -24,7 +24,10 @@ use std::process::Command;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use c0mpute_core::{Config, Supervisor, config, init_tracing, run_register};
+use c0mpute_core::{
+    Config, JobAuction, Supervisor, TranscodeJobInline, config, init_tracing, run_auction,
+    run_register,
+};
 use c0mpute_proto::Role;
 
 #[derive(Parser, Debug)]
@@ -363,12 +366,43 @@ async fn run_transcode(cmd: TranscodeCmd) -> Result<()> {
             preset,
             max_price,
         } => {
-            println!(
-                "[stub] would build ffmpeg.transcode job manifest for {} (preset={}, max_price={:?})",
-                input.display(),
-                preset,
-                max_price
-            );
+            // Phase 1: only HTTP(S) URLs are supported as inputs (the
+            // worker fetches via reqwest). Local-file submission needs
+            // chunk-store + libp2p request-response, which is Phase 2.
+            let input_url = input.to_string_lossy().to_string();
+            if !(input_url.starts_with("http://") || input_url.starts_with("https://")) {
+                anyhow::bail!(
+                    "Phase 1 requires an http(s) URL for --input (local file submission \
+                     uses the chunk store and lands in Phase 2). Got: {input_url}"
+                );
+            }
+            let spec = preset_to_spec(&preset)?;
+            let inline = TranscodeJobInline {
+                input_url: input_url.clone(),
+                preset: preset.clone(),
+                spec,
+            };
+            let spec_inline = serde_json::to_value(&inline)?;
+
+            // Boot a buyer-mode libp2p node — this CLI invocation is
+            // ephemeral, no roles, no advertise.
+            let cfg = Config::default();
+            let sup = Supervisor::boot(cfg).await?;
+            let net = sup.libp2p.clone();
+            // Tiny grace period so peer discovery (mDNS) sees us.
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            let auction = JobAuction::new("ffmpeg.transcode", spec_inline)
+                .with_required_capabilities(vec!["c0mpute:role:transcode".into()])
+                .with_max_price_usd(max_price.unwrap_or(1.0));
+            let outcome = run_auction(net, auction).await?;
+            println!("job_id        : {}", outcome.job_id);
+            println!("winner        : {}", outcome.accepted_bid.bidder_peer_id);
+            println!("price_usd     : {}", outcome.accepted_bid.price_usd);
+            println!("status        : {:?}", outcome.receipt.status);
+            if let Some(h) = &outcome.receipt.output_hash {
+                println!("output_hash   : {h}");
+            }
             Ok(())
         }
         TranscodeCmd::Preset {
@@ -425,6 +459,46 @@ fn run_plugin(cmd: PluginCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Phase-1 preset → TranscodeSpec. Three are wired so the round-trip
+/// demo works — the full preset library lands when the marketplace
+/// flow is mature enough to be worth fleshing out.
+fn preset_to_spec(preset: &str) -> Result<c0mpute_proto::TranscodeSpec> {
+    use c0mpute_proto::{Codec, TranscodeSpec};
+    let s = match preset {
+        "video-720p" => TranscodeSpec {
+            codec: Codec::H264,
+            bitrate_bps: 2_500_000,
+            width: 1280,
+            height: 720,
+            keyframe_interval: 60,
+            hardware_pref: None,
+            extra_ffmpeg_args: vec![],
+        },
+        "video-1080p" => TranscodeSpec {
+            codec: Codec::H264,
+            bitrate_bps: 5_000_000,
+            width: 1920,
+            height: 1080,
+            keyframe_interval: 60,
+            hardware_pref: None,
+            extra_ffmpeg_args: vec![],
+        },
+        "video-4k" => TranscodeSpec {
+            codec: Codec::Hevc,
+            bitrate_bps: 15_000_000,
+            width: 3840,
+            height: 2160,
+            keyframe_interval: 60,
+            hardware_pref: None,
+            extra_ffmpeg_args: vec![],
+        },
+        other => anyhow::bail!(
+            "preset '{other}' isn't wired in Phase 1 (try video-720p, video-1080p, video-4k)"
+        ),
+    };
+    Ok(s)
 }
 
 /// Resolve a `c0mpute plugin install <target>` argument and dispatch.

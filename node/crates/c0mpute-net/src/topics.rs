@@ -75,6 +75,12 @@ pub struct JobOffer {
     /// out-of-band (signed URL, content-addressed network, etc.) once
     /// the auction is settled.
     pub spec_hash: String,
+    /// Workload spec carried inline. Phase 1: the entire job (input URL
+    /// + ffmpeg preset, etc.) lives here so workers don't need a
+    /// separate manifest fetch. Phase 2 (chunk-store transfer) flips
+    /// this back to None and uses `spec_hash` + Libp2p request-response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_inline: Option<serde_json::Value>,
     /// Capability tags the worker MUST advertise to be eligible. The
     /// dispatcher filters by these before considering bids.
     pub required_capabilities: Vec<String>,
@@ -111,6 +117,14 @@ pub struct JobAccept {
     pub buyer_peer_id: String,
     pub winning_bidder_peer_id: String,
     pub agreed_price_usd: f64,
+    /// Workload type this accept is for (lets workers route to the
+    /// right runner without rebuilding the topic from scratch).
+    pub workload_type: String,
+    /// Same shape as `JobOffer.spec_inline` — the actual workload
+    /// spec, repeated here so the winning worker doesn't need to keep
+    /// every offer it bid on cached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_inline: Option<serde_json::Value>,
     pub published_at_ms: u64,
 }
 
