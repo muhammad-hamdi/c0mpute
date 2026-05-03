@@ -14,8 +14,10 @@
 //!   /c0mpute/kad/1.0.0          — DHT (peer + content discovery)
 //!   /c0mpute/chunk-fetch/1.0.0  — request/response for chunk bytes
 
+pub mod bootstrap;
 pub mod identity;
 pub mod swarm;
+pub mod topics;
 
 use std::sync::Arc;
 

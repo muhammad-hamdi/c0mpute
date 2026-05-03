@@ -48,7 +48,7 @@ url = "2"
 directories = "5"
 sysinfo = "0.32"
 reed-solomon-erasure = "6"
-libp2p = { version = "0.56", features = ["tcp", "noise", "yamux", "kad", "identify", "ping", "request-response", "macros", "tokio", "ed25519", "cbor"] }
+libp2p = { version = "0.56", features = ["tcp", "noise", "yamux", "kad", "identify", "ping", "request-response", "macros", "tokio", "ed25519", "cbor", "gossipsub", "mdns"] }
 
 c0mpute-proto = { path = "node/crates/c0mpute-proto" }
 c0mpute-store = { path = "node/crates/c0mpute-store" }

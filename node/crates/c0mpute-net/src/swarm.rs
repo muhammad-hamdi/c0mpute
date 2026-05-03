@@ -20,10 +20,10 @@ use c0mpute_proto::{ChunkRequest, Hash};
 use futures::StreamExt;
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol,
-    identify, identity, kad, ping, request_response,
+    gossipsub, identify, identity, kad, mdns, ping, request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tracing::{debug, info};
 
 use crate::{ChunkSource, Network, identity as id_mod};
@@ -53,6 +53,23 @@ enum Cmd {
     Addrs {
         reply: oneshot::Sender<Vec<Multiaddr>>,
     },
+    Publish {
+        topic: String,
+        payload: Vec<u8>,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    Subscribe {
+        topic: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+}
+
+/// A gossipsub message delivered to a subscribed topic.
+#[derive(Clone, Debug)]
+pub struct GossipMessage {
+    pub topic: String,
+    pub source: Option<PeerId>,
+    pub data: Vec<u8>,
 }
 
 /// Public configuration knobs.
@@ -98,6 +115,7 @@ impl NetworkConfig {
 /// `Network` trait impl backed by a real libp2p Swarm.
 pub struct Libp2pNetwork {
     cmd_tx: mpsc::Sender<Cmd>,
+    gossip_tx: broadcast::Sender<GossipMessage>,
     peer_id: PeerId,
 }
 
@@ -109,8 +127,9 @@ impl Libp2pNetwork {
         let peer_id = keypair.public().to_peer_id();
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>(64);
+        let (gossip_tx, _) = broadcast::channel::<GossipMessage>(256);
 
-        let task = SwarmTask::new(keypair, config.local_source).await?;
+        let task = SwarmTask::new(keypair, config.local_source, gossip_tx.clone()).await?;
         for addr in &config.listen {
             task.swarm
                 .lock()
@@ -128,7 +147,48 @@ impl Libp2pNetwork {
 
         tokio::spawn(task.run(cmd_rx));
 
-        Ok(Self { cmd_tx, peer_id })
+        Ok(Self {
+            cmd_tx,
+            gossip_tx,
+            peer_id,
+        })
+    }
+
+    /// Publish bytes to a gossipsub topic. The topic must have been
+    /// `subscribe`d first (libp2p subscribes-to-publish to participate
+    /// in the mesh).
+    pub async fn publish(&self, topic: &str, payload: Vec<u8>) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(Cmd::Publish {
+                topic: topic.to_string(),
+                payload,
+                reply: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("swarm task closed"))?;
+        rx.await.map_err(|_| anyhow!("swarm task closed"))?
+    }
+
+    /// Subscribe to a gossipsub topic. Use `messages()` to receive
+    /// delivered payloads on the broadcast stream.
+    pub async fn subscribe(&self, topic: &str) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(Cmd::Subscribe {
+                topic: topic.to_string(),
+                reply: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("swarm task closed"))?;
+        rx.await.map_err(|_| anyhow!("swarm task closed"))?
+    }
+
+    /// Receive gossipsub messages delivered to any subscribed topic.
+    /// Messages predating the call are not replayed; this is a live
+    /// stream from the moment of subscription.
+    pub fn messages(&self) -> broadcast::Receiver<GossipMessage> {
+        self.gossip_tx.subscribe()
     }
 
     pub fn peer_id(&self) -> PeerId {
@@ -200,6 +260,8 @@ struct C0mputeBehaviour {
     identify: identify::Behaviour,
     ping: ping::Behaviour,
     fetch: request_response::cbor::Behaviour<FetchRequest, FetchResponse>,
+    gossipsub: gossipsub::Behaviour,
+    mdns: mdns::tokio::Behaviour,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -230,12 +292,16 @@ struct SwarmTask {
     /// Track which chunk a fetch is for, so we can re-issue against another
     /// provider if the first one says NotFound.
     fetch_targets: HashMap<request_response::OutboundRequestId, Hash>,
+    /// Broadcast channel for gossipsub messages delivered to subscribed
+    /// topics. Senders are upstream consumers that called `messages()`.
+    gossip_tx: broadcast::Sender<GossipMessage>,
 }
 
 impl SwarmTask {
     async fn new(
         keypair: identity::Keypair,
         local_source: Option<Arc<dyn ChunkSource>>,
+        gossip_tx: broadcast::Sender<GossipMessage>,
     ) -> Result<Self> {
         let swarm = libp2p::SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
@@ -261,11 +327,27 @@ impl SwarmTask {
                     [(FETCH_PROTOCOL, request_response::ProtocolSupport::Full)],
                     request_response::Config::default(),
                 );
+                let gossipsub_cfg = gossipsub::ConfigBuilder::default()
+                    .heartbeat_interval(Duration::from_secs(1))
+                    .validation_mode(gossipsub::ValidationMode::Strict)
+                    .build()
+                    .map_err(|e| std::io::Error::other(format!("gossipsub config: {e}")))?;
+                let gossipsub = gossipsub::Behaviour::new(
+                    gossipsub::MessageAuthenticity::Signed(key.clone()),
+                    gossipsub_cfg,
+                )
+                .map_err(|e| std::io::Error::other(format!("gossipsub behaviour: {e}")))?;
+                let mdns = mdns::tokio::Behaviour::new(
+                    mdns::Config::default(),
+                    local_peer_id,
+                )?;
                 Ok(C0mputeBehaviour {
                     kad,
                     identify,
                     ping,
                     fetch,
+                    gossipsub,
+                    mdns,
                 })
             })
             .map_err(|e| anyhow!("build behaviour: {e}"))?
@@ -278,6 +360,7 @@ impl SwarmTask {
             pending_kad_lookups: HashMap::new(),
             pending_fetches: HashMap::new(),
             fetch_targets: HashMap::new(),
+            gossip_tx,
         })
     }
 
@@ -356,6 +439,36 @@ impl SwarmTask {
                 self.pending_kad_lookups.insert(qid, reply);
                 debug!(chunk = %req.chunk_hash, "kad get_providers issued");
             }
+            Cmd::Publish {
+                topic,
+                payload,
+                reply,
+            } => {
+                let t = gossipsub::IdentTopic::new(&topic);
+                let r = self
+                    .swarm
+                    .lock()
+                    .await
+                    .behaviour_mut()
+                    .gossipsub
+                    .publish(t, payload)
+                    .map(|_| ())
+                    .map_err(|e| anyhow!("gossipsub publish: {e}"));
+                let _ = reply.send(r);
+            }
+            Cmd::Subscribe { topic, reply } => {
+                let t = gossipsub::IdentTopic::new(&topic);
+                let r = self
+                    .swarm
+                    .lock()
+                    .await
+                    .behaviour_mut()
+                    .gossipsub
+                    .subscribe(&t)
+                    .map(|_| ())
+                    .map_err(|e| anyhow!("gossipsub subscribe: {e}"));
+                let _ = reply.send(r);
+            }
         }
     }
 
@@ -394,6 +507,46 @@ impl SwarmTask {
                 if let Some(reply) = self.pending_fetches.remove(&request_id) {
                     self.fetch_targets.remove(&request_id);
                     let _ = reply.send(Err(anyhow!("fetch failed: {error}")));
+                }
+            }
+            SwarmEvent::Behaviour(C0mputeBehaviourEvent::Gossipsub(
+                gossipsub::Event::Message {
+                    propagation_source,
+                    message,
+                    ..
+                },
+            )) => {
+                let msg = GossipMessage {
+                    topic: message.topic.into_string(),
+                    source: message.source.or(Some(propagation_source)),
+                    data: message.data,
+                };
+                // Send to upstream consumers; ignore errors (no
+                // subscribers is fine — the buffer is bounded so this
+                // never blocks).
+                let _ = self.gossip_tx.send(msg);
+            }
+            SwarmEvent::Behaviour(C0mputeBehaviourEvent::Mdns(
+                mdns::Event::Discovered(peers),
+            )) => {
+                let mut sw = self.swarm.lock().await;
+                for (peer_id, addr) in peers {
+                    debug!(%peer_id, %addr, "mDNS discovered peer");
+                    sw.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                    // Add to gossipsub mesh too — gossipsub itself uses
+                    // Kad for routing once peers are known.
+                    sw.behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer_id);
+                }
+            }
+            SwarmEvent::Behaviour(C0mputeBehaviourEvent::Mdns(
+                mdns::Event::Expired(peers),
+            )) => {
+                let mut sw = self.swarm.lock().await;
+                for (peer_id, _addr) in peers {
+                    debug!(%peer_id, "mDNS peer expired");
+                    sw.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                 }
             }
             _ => {}
@@ -607,5 +760,54 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         panic!("node never bound a listen addr");
+    }
+
+    /// gossipsub publish/subscribe across two nodes.
+    #[tokio::test]
+    async fn two_node_gossipsub_publish_receive() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("c0mpute_net=info,libp2p_gossipsub=warn")
+            .with_test_writer()
+            .try_init();
+
+        let net_a = Libp2pNetwork::spawn(
+            NetworkConfig::for_dir(tempdir("gs-a"))
+                .with_listen(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()]),
+        )
+        .await
+        .unwrap();
+        let a_addr = wait_for_listen(&net_a).await;
+        let a_full = a_addr.with(libp2p::multiaddr::Protocol::P2p(net_a.peer_id()));
+
+        let net_b = Libp2pNetwork::spawn(
+            NetworkConfig::for_dir(tempdir("gs-b"))
+                .with_listen(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()])
+                .with_bootstrap(vec![a_full]),
+        )
+        .await
+        .unwrap();
+
+        // Both nodes subscribe to the same topic, then A publishes a
+        // payload and B should receive it.
+        let topic = "c0mpute/test/v1";
+        net_a.subscribe(topic).await.unwrap();
+        net_b.subscribe(topic).await.unwrap();
+
+        // gossipsub needs a moment for the mesh to connect.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        let mut rx = net_b.messages();
+        let payload = b"hello gossipsub from a".to_vec();
+        net_a.publish(topic, payload.clone()).await.unwrap();
+
+        // Wait up to 3s for delivery.
+        let received = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .expect("gossipsub message should arrive within 3s")
+            .expect("broadcast channel should not be closed");
+
+        assert_eq!(received.topic, topic);
+        assert_eq!(received.data, payload);
+        assert_eq!(received.source, Some(net_a.peer_id()));
     }
 }

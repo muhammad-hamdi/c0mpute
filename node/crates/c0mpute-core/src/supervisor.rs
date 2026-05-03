@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use c0mpute_net::{ChunkSource, Libp2pNetwork, Network, NetworkConfig};
+use c0mpute_net::{ChunkSource, Libp2pNetwork, Network, NetworkConfig, bootstrap};
 use c0mpute_proto::Hash;
 use c0mpute_store::ChunkStore;
 use tracing::info;
@@ -31,8 +31,23 @@ impl Supervisor {
         let local_source: Arc<dyn ChunkSource> =
             Arc::new(StoreSource(store.clone()));
 
+        // Fetch bootstrap list from c0mpute.com (best-effort) and merge
+        // with the hardcoded fallback list. mDNS handles LAN discovery
+        // independently. Empty bootstrap is fine for a standalone /
+        // first-on-network node.
+        let bootstrap_addrs = bootstrap::fetch_or_fallback(
+            bootstrap::DEFAULT_BOOTSTRAP_URL,
+            vec![],
+        )
+        .await;
+        info!(
+            count = bootstrap_addrs.len(),
+            "bootstrap peers loaded"
+        );
+
         let net_cfg = NetworkConfig::for_dir(identity_dir)
-            .with_local_source(local_source);
+            .with_local_source(local_source)
+            .with_bootstrap(bootstrap_addrs);
 
         let libp2p_net = Libp2pNetwork::spawn(net_cfg).await?;
         info!(
