@@ -28,12 +28,6 @@ binary = "coinpay"
 # Standalone CLI on PATH. The c0mpute umbrella forwards
 # `c0mpute coinpay <args>` straight through.
 
-[module.install]
-# Install URL routed through c0mpute.com (which chains to upstream
-# coinpay). Stable URL — won't break if upstream rotates theirs.
-# Source script: plugins/coinpay/install.sh in this repo.
-url = "https://c0mpute.com/plugins/coinpay/install.sh"
-
 [module.surfaces]
 cli = "coinpay"
 # web = "c0mpute.com/coinpay"   # planned (separate Next.js app)

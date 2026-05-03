@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
 # infernet plugin installer.
 #
-# Chains to the upstream infernet-protocol installer.
+# Convention: subprocess plugins install from <homepage>/install.sh, where
+# <homepage> is the value of `homepage` in plugins/infernet/module.toml.
+# Routing through c0mpute.com keeps the c0mpute install URL stable; the
+# chain target tracks the manifest's homepage.
 #
-# Served at https://c0mpute.com/plugins/infernet/install.sh.
+# Override via $INFERNET_INSTALL_URL for testing or local mirrors.
 # Source: https://github.com/profullstack/c0mpute/tree/master/plugins/infernet
 # Upstream: https://github.com/infernetprotocol/infernet-protocol
 set -eu

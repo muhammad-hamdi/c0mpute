@@ -28,11 +28,6 @@ capabilities = ["gpu:nvidia?", "model-runtime"]
 mode   = "subprocess"
 binary = "infernet"
 
-[module.install]
-# Install URL routed through c0mpute.com (chains to upstream infernet).
-# Source script: plugins/infernet/install.sh in this repo.
-url = "https://c0mpute.com/plugins/infernet/install.sh"
-
 [module.surfaces]
 cli = "infernet"
 # web = "c0mpute.com/infernet"   # planned

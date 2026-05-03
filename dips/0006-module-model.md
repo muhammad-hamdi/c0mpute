@@ -98,11 +98,15 @@ Every plugin in `plugins/<id>/` ships an `install.sh` checked into this
 repo. Two patterns by use-case:
 
 1. **Upstream CLI exists** (e.g. coinpay, infernet) — the script
-   *wraps* the upstream installer:
+   *wraps* the upstream installer at the plugin's `<homepage>/install.sh`.
+   The chain target is implicit (no separate manifest field for it):
 
    ```sh
    #!/usr/bin/env sh
    set -eu
+   # <PLUGIN>_INSTALL_URL overrides the chain target. Default tracks
+   # the `homepage` field in module.toml — the convention is
+   # <homepage>/install.sh.
    UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpayportal.com/install.sh}"
    exec sh -c "$(curl -fsSL "$UPSTREAM")" "$@"
    ```
@@ -110,6 +114,9 @@ repo. Two patterns by use-case:
    The override env var is mandatory so the wrapper doesn't break if
    upstream rotates URLs. Routing through c0mpute.com gives us a stable
    public URL even when upstream changes.
+
+   No `[module.install]` block is needed in `module.toml` — the install
+   path is implicit from `homepage`.
 
 2. **No upstream** (e.g. a brand-new plugin shipping its own binary) —
    the script contains the *actual* install logic:
