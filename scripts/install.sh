@@ -18,6 +18,9 @@
 #   --worker        Add Docker / FFmpeg readiness checks
 #   --developer     Verbose diagnostics
 #   --force         Reinstall over existing
+#   --no-exec       Don't auto-exec a fresh shell at the end
+#                   (CI-friendly; default is to drop you into a new
+#                   shell with c0mpute already on $PATH)
 set -eu
 
 C0MPUTE_VERSION="${C0MPUTE_VERSION:-latest}"
@@ -50,8 +53,9 @@ while [ $# -gt 0 ]; do
     --worker)       WORKER_MODE=1 ;;
     --developer)    DEVELOPER_MODE=1 ;;
     --force)        FORCE=1 ;;
+    --no-exec)      NO_EXEC=1 ;;
     --help|-h)
-      sed -n '2,18p' "$0"
+      sed -n '2,20p' "$0"
       exit 0
       ;;
     *)
@@ -350,22 +354,6 @@ main() {
   print_versions
   run_doctor
 
-  if ! printf '%s' "$PATH" | grep -q '\.c0mpute/bin'; then
-    user_shell=$(detect_shell)
-    rc_hint=$(shell_rc_for "$user_shell")
-    printf '\n\033[1;33m! Your CURRENT %s shell does NOT have c0mpute on $PATH yet.\033[0m\n' "$user_shell"
-    printf '  We added c0mpute + mise activation to your shell rc files,\n'
-    printf '  but they only kick in for NEW shells.\n\n'
-    printf '  Do ONE of these:\n'
-    if [ "$user_shell" = "fish" ]; then
-      printf '    \033[1;36msource %s\033[0m\n' "$rc_hint"
-    else
-      printf '    \033[1;36m. %s\033[0m\n' "$rc_hint"
-    fi
-    printf '    \033[1;36mexec $SHELL\033[0m                # restart current shell\n'
-    printf '    Open a new terminal\n\n'
-  fi
-
   cat <<EOF
 Next steps:
   c0mpute coinpay did create
@@ -375,6 +363,47 @@ Next steps:
 
 Docs: https://c0mpute.com/docs
 EOF
+
+  # Auto-activate the new shell so the user doesn't have to run
+  # `source ~/.bashrc` or `exec $SHELL` manually.
+  #
+  # When the user runs `curl ... | sh`, our `sh` is a child of their
+  # interactive shell. Children can't modify the parent's environment,
+  # but we CAN exec a fresh interactive shell that reads the rc files
+  # (and thus has the new PATH). Stdin needs to point at the user's
+  # actual terminal (/dev/tty), since the curl pipe stole stdin.
+  #
+  # Skip auto-exec when:
+  #   - PATH already contains ~/.c0mpute/bin (no reload needed)
+  #   - stdout isn't a TTY (CI / piped to file)
+  #   - /dev/tty isn't readable (no controlling terminal)
+  #   - user passed --no-exec
+  if printf '%s' "$PATH" | grep -q '\.c0mpute/bin'; then
+    return 0
+  fi
+  if [ "${NO_EXEC:-0}" = "1" ] || [ "${SKIP_EXEC:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
+    user_shell=$(detect_shell)
+    rc_hint=$(shell_rc_for "$user_shell")
+    printf '\n\033[1;33m! No TTY available for auto-reload.\033[0m\n'
+    if [ "$user_shell" = "fish" ]; then
+      printf '  Run: \033[1;36msource %s\033[0m\n\n' "$rc_hint"
+    else
+      printf '  Run: \033[1;36m. %s\033[0m   (or \033[1;36mexec $SHELL\033[0m)\n\n' "$rc_hint"
+    fi
+    return 0
+  fi
+
+  user_shell=$(detect_shell)
+  shell_bin="${SHELL:-/bin/bash}"
+  printf '\n\033[1;36m→\033[0m starting fresh %s shell with c0mpute on $PATH\n' "$user_shell"
+  printf '  (type \033[1;36mexit\033[0m to return to your original shell)\n\n'
+  case "$user_shell" in
+    fish) exec "$shell_bin" -i </dev/tty ;;
+    *)    exec "$shell_bin" -i </dev/tty ;;
+  esac
 
   if [ "$DEVELOPER_MODE" -eq 1 ]; then
     echo
