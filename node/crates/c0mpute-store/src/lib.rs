@@ -5,8 +5,16 @@
 //! re-hashes by default; callers can opt out with `read_unchecked` when they
 //! already trust the source (e.g. just-written file).
 //!
-//! Erasure coding is layered on top of this store, not inside it: the store
-//! deals in opaque byte blobs keyed by their blake3 hash.
+//! Two layers in this crate:
+//!
+//!   1. `ChunkStore` — opaque byte blobs keyed by blake3 hash.
+//!   2. `erasure` module — Reed-Solomon 10/14 encode/decode for the
+//!      storage plugin (DIP-0012). Built on top of `ChunkStore`.
+
+pub mod erasure;
+pub mod storage;
+
+pub use storage::{Storage, ObjectManifest, ShardEntry};
 
 use std::path::{Path, PathBuf};
 

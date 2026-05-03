@@ -47,6 +47,7 @@ async-trait = "0.1"
 url = "2"
 directories = "5"
 sysinfo = "0.32"
+reed-solomon-erasure = "6"
 
 c0mpute-proto = { path = "node/crates/c0mpute-proto" }
 c0mpute-store = { path = "node/crates/c0mpute-store" }
