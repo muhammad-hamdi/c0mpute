@@ -38,6 +38,7 @@ export default function RootLayout({
             </Link>
             <div className="flex gap-5 text-[var(--color-dim)]">
               <Link href="/getting-started" className="!border-0 hover:text-[var(--color-accent)]">getting-started</Link>
+              <Link href="/plugins" className="!border-0 hover:text-[var(--color-accent)]">plugins</Link>
               <Link href="/docs" className="!border-0 hover:text-[var(--color-accent)]">docs</Link>
               <Link href="/contact" className="!border-0 hover:text-[var(--color-accent)]">contact</Link>
             </div>
