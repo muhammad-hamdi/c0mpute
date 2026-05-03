@@ -1,23 +1,8 @@
 {
   "$schema": "https://schema.railpack.com",
-  "providers": ["node"],
+  "provider": "node",
   "packages": {
     "node": "22",
     "bun": "1.3"
-  },
-  "steps": {
-    "install": {
-      "commands": [
-        "bun install --frozen-lockfile"
-      ]
-    },
-    "build": {
-      "commands": [
-        "bun run --filter=c0mpute build"
-      ]
-    }
-  },
-  "deploy": {
-    "startCommand": "bun run --filter=c0mpute start"
   }
 }
