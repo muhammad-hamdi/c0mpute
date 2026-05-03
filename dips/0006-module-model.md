@@ -92,6 +92,48 @@ mode = "in-process"                  # in-process | subprocess | container
 preset = "video-1080p"
 ```
 
+### Plugin install scripts (`plugins/<id>/install.sh`)
+
+Every plugin in `plugins/<id>/` ships an `install.sh` checked into this
+repo. Two patterns by use-case:
+
+1. **Upstream CLI exists** (e.g. coinpay, infernet) — the script
+   *wraps* the upstream installer:
+
+   ```sh
+   #!/usr/bin/env sh
+   set -eu
+   UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpay.com/install.sh}"
+   exec sh -c "$(curl -fsSL "$UPSTREAM")" "$@"
+   ```
+
+   The override env var is mandatory so the wrapper doesn't break if
+   upstream rotates URLs. Routing through c0mpute.com gives us a stable
+   public URL even when upstream changes.
+
+2. **No upstream** (e.g. a brand-new plugin shipping its own binary) —
+   the script contains the *actual* install logic:
+
+   ```sh
+   #!/usr/bin/env sh
+   set -eu
+   PLATFORM=$(uname -s)-$(uname -m)
+   curl -fsSL "https://example.com/myplugin-${PLATFORM}.tar.gz" \
+     -o /tmp/myplugin.tar.gz
+   # ... verify minisign, extract to ~/.c0mpute/bin/, etc.
+   ```
+
+The same script is reachable two ways:
+
+- `https://c0mpute.com/plugins/<id>/install.sh` — served by the Next.js
+  dynamic route at `apps/web/src/app/plugins/[id]/install.sh/route.ts`.
+  Stable through us; the canonical URL.
+- `https://raw.githubusercontent.com/profullstack/c0mpute/master/plugins/<id>/install.sh`
+  — direct from GitHub if c0mpute.com is down.
+
+`c0mpute plugin install <id>` resolves the id to the c0mpute.com URL.
+`c0mpute plugin install <full-url>` accepts any third-party URL.
+
 ### Built-in modules at v1
 
 | ID         | Kind        | Dispatch       | Notes                                 |
