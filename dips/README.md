@@ -95,3 +95,5 @@ superseded-by: <DIP-NNNN if this gets replaced>
 | 0009 | Mojo for GPU/kernel-shaped compute (when applicable)             | Accepted   |
 | 0010 | Operator-run seed nodes for libp2p Kad-DHT bootstrap             | Accepted   |
 | 0011 | No central backend; libp2p + CoinPay are source of truth         | Accepted   |
+| 0012 | c0mpute is compute-only; storage is BYOS                         | Accepted   |
+| 0013 | Position: GPU batch-compute marketplace; 5–8× cheaper niche      | Accepted   |
