@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use c0mpute_net::{ChunkSource, Libp2pNetwork, Network, NetworkConfig, bootstrap};
+
+use crate::capabilities::{self, Registry};
 use c0mpute_proto::Hash;
 use c0mpute_store::ChunkStore;
 use tracing::info;
@@ -14,6 +16,8 @@ pub struct Supervisor {
     pub config: Config,
     pub store: ChunkStore,
     pub net: Arc<dyn Network>,
+    pub libp2p: Arc<Libp2pNetwork>,
+    pub registry: Registry,
 }
 
 impl Supervisor {
@@ -49,17 +53,24 @@ impl Supervisor {
             .with_local_source(local_source)
             .with_bootstrap(bootstrap_addrs);
 
-        let libp2p_net = Libp2pNetwork::spawn(net_cfg).await?;
+        let libp2p_net: Arc<Libp2pNetwork> =
+            Arc::new(Libp2pNetwork::spawn(net_cfg).await?);
         info!(
             peer_id = %libp2p_net.peer_id(),
             "libp2p network up"
         );
-        let net: Arc<dyn Network> = Arc::new(libp2p_net);
+        // Same Arc, two views: the dyn-Network trait object for the
+        // gateway / chunk-fetch path, and the concrete Libp2pNetwork
+        // for the pub/sub APIs that aren't on the trait.
+        let net: Arc<dyn Network> = libp2p_net.clone() as Arc<dyn Network>;
+        let registry = Registry::new();
 
         Ok(Self {
             config,
             store,
             net,
+            libp2p: libp2p_net,
+            registry,
         })
     }
 
@@ -69,6 +80,22 @@ impl Supervisor {
             store = %self.config.storage.root.display(),
             "supervisor up"
         );
+
+        // Capability registry: subscribe to c0mpute/cap/v1 and keep a
+        // map of seen peers + their advertised capabilities.
+        self.registry.run(self.libp2p.clone());
+
+        // Capability advertise loop: periodically publish our own ad.
+        let tags = capabilities::tags_from_config(&self.config);
+        let hardware = capabilities::hardware_blob(&self.config);
+        let net = self.libp2p.clone();
+        info!(?tags, "advertising capabilities");
+        tokio::spawn(capabilities::advertise_loop(
+            net,
+            tags,
+            hardware,
+            capabilities::DEFAULT_ADVERTISE_INTERVAL,
+        ));
 
         if self.config.roles.contains(&c0mpute_proto::Role::Gateway) {
             let bind: std::net::SocketAddr = self.config.gateway.bind.parse()?;

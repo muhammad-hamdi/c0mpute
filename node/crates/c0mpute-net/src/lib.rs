@@ -25,7 +25,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use c0mpute_proto::{ChunkRequest, Hash};
 
-pub use swarm::{Libp2pNetwork, NetworkConfig};
+pub use libp2p::{Multiaddr, PeerId, multiaddr::Protocol};
+pub use swarm::{GossipMessage, Libp2pNetwork, NetworkConfig};
 
 /// Trait that abstracts the underlying network so the rest of the node can be
 /// developed and tested without booting libp2p.

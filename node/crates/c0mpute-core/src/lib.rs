@@ -1,13 +1,14 @@
 //! Core node coordination.
 //!
-//! Loads `~/.config/depin/config.toml`, decides which roles to run based on flags +
-//! config + detected hardware, and supervises the long-lived tasks for each
-//! role. Today only the `Config` struct and a rudimentary `Supervisor` shell
-//! are implemented; M0 fills in the role bodies.
+//! Loads `~/.config/c0mpute/config.toml`, decides which roles to run based on
+//! flags + config + detected hardware, and supervises the long-lived tasks
+//! for each role.
 
+pub mod capabilities;
 pub mod config;
 pub mod supervisor;
 
+pub use capabilities::{Registry, advertise_loop, tags_from_config};
 pub use config::Config;
 pub use supervisor::Supervisor;
 
