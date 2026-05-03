@@ -3,7 +3,7 @@
 #
 # Installs the c0mpute v1 CLI stack:
 #   c0mpute   — this repo (https://github.com/profullstack/c0mpute)
-#   coinpay   — chained from https://coinpay.com/install.sh
+#   coinpay   — chained from https://coinpayportal.com/install.sh
 #   infernet  — chained from https://infernetprotocol.com/install.sh
 #
 # Idempotent — re-running upgrades in place.
@@ -21,7 +21,7 @@ C0MPUTE_VERSION="${C0MPUTE_VERSION:-latest}"
 C0MPUTE_HOME="${C0MPUTE_HOME:-$HOME/.c0mpute}"
 RELEASE_BASE="${C0MPUTE_RELEASE_BASE:-https://c0mpute.com/releases}"
 
-COINPAY_INSTALL_URL="${COINPAY_INSTALL_URL:-https://coinpay.com/install.sh}"
+COINPAY_INSTALL_URL="${COINPAY_INSTALL_URL:-https://coinpayportal.com/install.sh}"
 INFERNET_INSTALL_URL="${INFERNET_INSTALL_URL:-https://infernetprotocol.com/install.sh}"
 
 INSTALL_C0MPUTE=1

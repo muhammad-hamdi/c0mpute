@@ -67,7 +67,7 @@ first-class peer modules rather than internal subcommands.
 
 - Public website + dashboard: `c0mpute.com`.
 - Default escrow-and-payments brand: `coinpay` (separate website at
-  `coinpay.com` likely; out of scope here).
+  `coinpayportal.com` likely; out of scope here).
 - Inference brand: `infernet` (existing, owned upstream).
 
 ### Per-module namespace (URL + CLI symmetry)

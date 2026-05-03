@@ -103,7 +103,7 @@ repo. Two patterns by use-case:
    ```sh
    #!/usr/bin/env sh
    set -eu
-   UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpay.com/install.sh}"
+   UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpayportal.com/install.sh}"
    exec sh -c "$(curl -fsSL "$UPSTREAM")" "$@"
    ```
 

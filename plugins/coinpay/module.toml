@@ -12,8 +12,8 @@ kind        = "service"
 description = "Decentralized identifiers, wallet linking, escrow, signed receipts, and worker reputation. The trust spine of the c0mpute network."
 author      = "Profullstack"
 license     = "MIT"
-homepage    = "https://coinpay.com"
-source      = "https://github.com/profullstack/c0mpute/tree/master/plugins/coinpay"
+homepage    = "https://coinpayportal.com"
+source      = "https://github.com/profullstack/coinpayportal"
 keywords    = ["did", "identity", "escrow", "payments", "reputation"]
 
 [module.requirements]

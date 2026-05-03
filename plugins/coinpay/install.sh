@@ -8,7 +8,7 @@
 # Source: https://github.com/profullstack/c0mpute/tree/master/plugins/coinpay
 set -eu
 
-UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpay.com/install.sh}"
+UPSTREAM="${COINPAY_INSTALL_URL:-https://coinpayportal.com/install.sh}"
 
 printf '\033[1;36m→\033[0m installing coinpay via %s\n' "$UPSTREAM"
 exec sh -c "$(curl -fsSL "$UPSTREAM")" "$@"
