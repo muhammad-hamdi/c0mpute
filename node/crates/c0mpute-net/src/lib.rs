@@ -1,20 +1,29 @@
 //! libp2p networking layer for c0mpute.
 //!
-//! Scope: peer discovery (Kad-DHT under `/c0mpute/kad/1.0.0`), capability
-//! announcement (gossipsub), chunk request/response transport, parallel-
-//! fetch racing. See c0mpute v1 PRD + DIP-0010 (bootstrap seed nodes).
+//! Phase 1 surface (this crate today):
 //!
-//! Status: SCAFFOLD. This crate is currently ~56 lines: a `Network` trait
-//! + an in-memory `Loopback` impl for tests. The real libp2p stack hasn't
-//! been wired up yet — that's the load-bearing piece blocking the network
-//! actually existing. See DIP-0010 for the bootstrap design that lands
-//! alongside the libp2p implementation.
+//!   - `Network` trait — abstract `announce(hash)` / `fetch(req)`.
+//!   - `Loopback` — in-memory single-node impl, kept for unit tests.
+//!   - `swarm` module — real libp2p swarm (Kad-DHT + request/response).
+//!   - `Libp2pNetwork` — `Network` trait impl backed by the swarm.
+//!
+//! See c0mpute v1 PRD §"Network Protocol" + DIP-0010 (bootstrap seed
+//! nodes) + DIP-0011 (no central backend).
+//!
+//! Protocol IDs:
+//!   /c0mpute/kad/1.0.0          — DHT (peer + content discovery)
+//!   /c0mpute/chunk-fetch/1.0.0  — request/response for chunk bytes
+
+pub mod identity;
+pub mod swarm;
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use c0mpute_proto::{ChunkRequest, Hash};
+
+pub use swarm::{Libp2pNetwork, NetworkConfig};
 
 /// Trait that abstracts the underlying network so the rest of the node can be
 /// developed and tested without booting libp2p.

@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use c0mpute_net::{ChunkSource, Loopback, Network};
-use c0mpute_proto::{ChunkRequest, Hash};
+use c0mpute_net::{ChunkSource, Libp2pNetwork, Network, NetworkConfig};
+use c0mpute_proto::Hash;
 use c0mpute_store::ChunkStore;
 use tracing::info;
 
-use crate::Config;
+use crate::{Config, config};
 
 pub struct Supervisor {
     pub config: Config,
@@ -20,9 +20,27 @@ impl Supervisor {
     pub async fn boot(config: Config) -> Result<Self> {
         std::fs::create_dir_all(&config.storage.root)?;
         let store = ChunkStore::open(&config.storage.root).await?;
-        // Until libp2p is wired up, we use the Loopback "network" backed by
-        // the local store so end-to-end testing of the gateway works.
-        let net: Arc<dyn Network> = Arc::new(Loopback::new(Arc::new(StoreSource(store.clone()))));
+
+        // Real libp2p network. Identity persists at
+        // <config_dir>/identity.key. Bootstrap list is empty for now —
+        // DIP-0010 wires up c0mpute.com/bootstrap.json once we run
+        // public seed nodes.
+        let identity_dir = config::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let local_source: Arc<dyn ChunkSource> =
+            Arc::new(StoreSource(store.clone()));
+
+        let net_cfg = NetworkConfig::for_dir(identity_dir)
+            .with_local_source(local_source);
+
+        let libp2p_net = Libp2pNetwork::spawn(net_cfg).await?;
+        info!(
+            peer_id = %libp2p_net.peer_id(),
+            "libp2p network up"
+        );
+        let net: Arc<dyn Network> = Arc::new(libp2p_net);
+
         Ok(Self {
             config,
             store,
@@ -82,6 +100,3 @@ impl ChunkSource for StoreSource {
         self.0.get(hash).await
     }
 }
-
-#[allow(dead_code)]
-fn _silence_unused(_: ChunkRequest) {}

@@ -12,5 +12,8 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 async-trait = { workspace = true }
-# libp2p is added once we wire up the real network stack — kept out of the
-# initial dep tree so `cargo check` is fast during scaffold work.
+futures = { workspace = true }
+libp2p = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
