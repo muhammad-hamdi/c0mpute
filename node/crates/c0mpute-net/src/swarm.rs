@@ -62,6 +62,14 @@ enum Cmd {
         topic: String,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// DHT crawl primitive: ask Kad for peers closest to `key`, used
+    /// by the status aggregator to actively walk the keyspace and
+    /// surface peers that haven't recently published on subscribed
+    /// gossipsub topics. Bitmagnet-style.
+    KadFindNode {
+        key: Vec<u8>,
+        reply: oneshot::Sender<()>,
+    },
 }
 
 /// A gossipsub message delivered to a subscribed topic.
@@ -189,6 +197,21 @@ impl Libp2pNetwork {
     /// stream from the moment of subscription.
     pub fn messages(&self) -> broadcast::Receiver<GossipMessage> {
         self.gossip_tx.subscribe()
+    }
+
+    /// Kick the Kad routing table by querying for peers close to a
+    /// random key. Used by the status aggregator's DHT crawler to
+    /// surface peers we haven't heard from on gossipsub. The query
+    /// runs asynchronously inside the swarm; results show up in the
+    /// routing table for subsequent lookups.
+    pub async fn kad_find_node(&self, key: Vec<u8>) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(Cmd::KadFindNode { key, reply: tx })
+            .await
+            .map_err(|_| anyhow!("swarm task closed"))?;
+        rx.await.map_err(|_| anyhow!("swarm task closed"))?;
+        Ok(())
     }
 
     pub fn peer_id(&self) -> PeerId {
@@ -468,6 +491,16 @@ impl SwarmTask {
                     .map(|_| ())
                     .map_err(|e| anyhow!("gossipsub subscribe: {e}"));
                 let _ = reply.send(r);
+            }
+            Cmd::KadFindNode { key, reply } => {
+                let _ = self
+                    .swarm
+                    .lock()
+                    .await
+                    .behaviour_mut()
+                    .kad
+                    .get_closest_peers(key);
+                let _ = reply.send(());
             }
         }
     }

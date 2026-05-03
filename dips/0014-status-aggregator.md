@@ -19,13 +19,16 @@ network health: workers online, jobs in flight, jobs/24h, average
 latency. **No private data is ever displayed** — no peer-ids, no
 DIDs, no IPs, no individual jobs, no customer references.
 
-The data comes from a **status-aggregator** service that we run as a
-sibling Railway deployment. The aggregator is a c0mpute node booted
-in `verifier` mode that subscribes to `c0mpute/cap/v1` and
-`c0mpute/jobs/*` gossipsub topics, aggregates counts in memory, and
-exposes a JSON endpoint over Railway's private network. The
-c0mpute.com Next.js app proxies that JSON at `/api/status` (15s
-cache) and renders `/status` on top.
+**No centralized database.** The aggregator is a regular c0mpute node
+that **actively crawls the Kad-DHT** (bitmagnet-style: random
+`get_closest_peers` walks across the keyspace) AND subscribes to the
+public gossipsub topics. State is **in-memory only** and reconstructs
+on every restart from the live network.
+
+We host one aggregator on Railway to drive c0mpute.com/status. **It's
+not authoritative** — anyone can run another aggregator from a clone
+of this repo and get the same numbers (within seconds), because the
+data lives on the DHT + gossipsub, not in any DB we own.
 
 For this commit the aggregator is **not yet deployed** — `/status`
 returns placeholder zeros. The page works visually; the live numbers
@@ -100,24 +103,62 @@ aggregate counts and an `ok` bool.
 ┌──────────────────── status-aggregator (Railway) ───────────────────────┐
 │                                                                         │
 │   c0mpute --status-aggregator-mode                                      │
-│     subscribes:   c0mpute/cap/v1                                        │
-│                   c0mpute/jobs/*                                        │
-│                   c0mpute/heartbeat/v1                                  │
-│     in-memory:    HashMap<PeerId, last_seen>                            │
-│                   atomic counters for jobs in flight / 24h              │
-│     HTTP JSON:    GET / -> StatusPayload                                │
+│                                                                         │
+│   ── DHT crawler (bitmagnet-style) ───────────────────────────         │
+│      Periodically picks a random Kad key and runs                       │
+│      kad::get_closest_peers, harvesting peer-ids + addrs from           │
+│      the DHT walk. Discovers peers we'd never hear from on              │
+│      gossipsub alone.                                                   │
+│                                                                         │
+│   ── gossipsub listener ───────────────────────────────────────         │
+│      subscribes: c0mpute/cap/v1, c0mpute/jobs/*,                        │
+│                  c0mpute/heartbeat/v1                                   │
+│                                                                         │
+│   ── in-memory state (no DB) ──────────────────────────────────         │
+│      HashMap<PeerId, LastSeen + RoleTags>                               │
+│      ring buffer of recent jobs (24h) for completion-rate calc          │
+│      atomic counters for jobs in flight                                 │
+│                                                                         │
+│   ── HTTP JSON ────────────────────────────────────────────────         │
+│      GET / -> StatusPayload                                             │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 The aggregator is just a c0mpute node with a `--status-aggregator-mode`
-flag (lands in a follow-up commit). It uses the existing capability
-registry + a new `JobTracker` that watches `JobOffer` / `JobAccept` /
-`JobReceipt` topic flow and maintains running counts.
+flag (lands in a follow-up commit). The two-layered discovery —
+active DHT crawl + passive gossipsub — gives a stronger view than
+either alone:
 
-It's not authoritative for anything — it's a **read-only listener**
-on public gossipsub topics. If it dies, the network keeps running;
-only `/status` goes stale.
+- **DHT crawl** finds online peers even if they aren't actively
+  publishing on the gossipsub topics we listen to. Picks N random
+  keys per cycle, runs `kad::get_closest_peers(key)`, the responses
+  yield peer-ids + multiaddrs from the routing table. Same pattern
+  bitmagnet uses for the BitTorrent DHT.
+- **Gossipsub** gives us live capability advertisements + job
+  flow. Tells us *what* peers can do, not just *who* is online.
+
+It's not authoritative for anything — it's a **read-only observer**
+on public DHT + gossipsub state. If it dies, the network keeps
+running; only `/status` goes stale.
+
+### "Anyone can run an aggregator"
+
+The aggregator's only inputs are public DHT records and public
+gossipsub messages. There are no special tokens, no permissioned
+APIs, no shared secrets. A community operator can:
+
+```sh
+c0mpute --status-aggregator-mode --bind 0.0.0.0:8080
+```
+
+…and they'll get the same numbers (within ±1 cycle of crawl
+freshness). c0mpute.com hosts one for the canonical /status page, but
+it's not the only source of truth — the DHT is.
+
+This matters for DIP-0011's no-central-backend story: even the
+aggregate stats page is generated from public p2p state, not a
+database we operate.
 
 ### JSON contract
 
@@ -175,11 +216,19 @@ CoinPay's surface, queried by DID, not on a scrape-friendly page.
 status page is cheap and the constraint to keep it aggregate-only is
 straightforward to enforce.
 
-**Store metrics in Postgres / a database.** Reintroduces the central
-backend rejected in DIP-0011. The aggregator's in-memory state is
-fine — we don't need historical metrics for the public page (24h
-counter resets if the aggregator restarts; that's acceptable for a
-real-time status surface).
+**Store metrics in Postgres / a database.** Hard no. Reintroduces
+the central backend rejected in DIP-0011. The aggregator's in-memory
+state is fine — we don't need historical metrics for the public page
+(24h counter resets if the aggregator restarts; that's acceptable
+for a real-time status surface).
+
+**Passive gossipsub listener only (no DHT crawl).** Was the original
+v1 of this DIP; the user's pushback was correct: relying only on
+gossipsub means we miss peers who haven't yet published a capability
+ad after the aggregator started, and we have no way to verify "is
+the network actually populated" — only "are workers actively
+chatting on the topics we subscribed to". The bitmagnet model
+(active DHT walks) gives a stronger signal at trivial cost.
 
 ## Migration & rollout
 
@@ -190,7 +239,11 @@ Phase 1 (this commit):
 
 Phase 2 (follow-up):
 - `c0mpute --status-aggregator-mode` flag in c0mpute-cli.
-- Implement the JobTracker (subscribes to JobOffer/Accept/Receipt
+- Implement the **DHT crawler**: every ~30s, generate a few random
+  Kad keys and run `get_closest_peers` on each. Harvest peer-ids +
+  addrs from the responses; merge into the in-memory peer set with
+  a last-seen timestamp.
+- Implement the **JobTracker** (subscribes to JobOffer/Accept/Receipt
   on c0mpute/jobs/*, maintains counters).
 - Compose with the existing Registry for worker counts.
 - HTTP JSON endpoint at `/`.
